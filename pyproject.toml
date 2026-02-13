@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "blurt"
 dynamic = ["version"]
-description = "Talk, don't type. Local speech-to-text for macOS — hold a hotkey, speak, release to transcribe and auto-paste"
+description = "Talk, don't type. Runs on-device on macOS Apple Silicon. No cloud, no API keys and forever free."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
