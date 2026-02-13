@@ -2,6 +2,8 @@
 
 Talk, don't type.
 
+https://github.com/user-attachments/assets/4855ae07-6903-4764-98c2-5ab8b4201674
+
 Hold the right cmd ⌘, speak and release - text appears wherever your cursor is. Runs on-device on macOS Apple Silicon. No cloud, no API keys and forever free.
 
 ## Requirements
