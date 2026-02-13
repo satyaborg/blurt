@@ -2,7 +2,7 @@
 
 Talk, don't type.
 
-Hold the right cmd ⌘, speak and release - text appears wherever your cursor is. Runs on-device via [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) on macOS Apple Silicon. No cloud, no API keys and forever free.
+Hold the right cmd ⌘, speak and release - text appears wherever your cursor is. Runs on-device on macOS Apple Silicon. No cloud, no API keys and forever free.
 
 ## Requirements
 
@@ -16,6 +16,8 @@ pipx install blurt
 ```
 
 Requires [pipx](https://pipx.pypa.io/) (`brew install pipx`).
+
+Update to latest: `pipx upgrade blurt`
 
 First run downloads the Whisper model (~1.6 GB).
 
