@@ -3,8 +3,8 @@ class Blurt < Formula
 
   desc "Local speech-to-text for macOS using MLX Whisper on Apple Silicon"
   homepage "https://github.com/satyaborg/blurt"
-  url "https://files.pythonhosted.org/packages/source/b/blurt/blurt-0.1.0.tar.gz"
-  sha256 "d874fa1ec0f360315527e792dc7762949a6eb9fbe5ff0385eaa9f5d04f58527e"
+  url "https://files.pythonhosted.org/packages/source/b/blurt/blurt-0.1.1.tar.gz"
+  sha256 "9ca0fec664323b3552c65ba4f98167ff9382be01b1d5149ce66184dad46c8cbf"
   license "MIT"
 
   depends_on "python@3.12"
