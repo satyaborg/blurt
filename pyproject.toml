@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blurt"
+dynamic = ["version"]
+description = "Local speech-to-text for macOS — hold a hotkey, speak, release to transcribe and auto-paste"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Satya Borgohain" }]
+keywords = ["speech-to-text", "whisper", "mlx", "apple-silicon", "macos", "voice", "transcription"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: MacOS X",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "mlx-whisper",
+    "sounddevice",
+    "pynput",
+    "numpy",
+    "rich",
+]
+
+[project.urls]
+Homepage = "https://github.com/satyaborg/blurt"
+
+[project.scripts]
+blurt = "blurt:main"
+
+[tool.setuptools]
+py-modules = ["blurt"]
+
+[tool.setuptools.dynamic]
+version = {attr = "blurt.__version__"}
