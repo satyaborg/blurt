@@ -23,6 +23,10 @@ macOS will prompt you to grant your terminal:
 - **Microphone** access
 - **Accessibility** access (System Settings → Privacy & Security)
 
+## Privacy
+
+Your audio never leaves your Mac. Everything — recording, transcription, model inference — runs locally. No network calls, no telemetry, no accounts.
+
 ## License
 
 MIT
