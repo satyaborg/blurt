@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=68.0", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -36,5 +36,4 @@ blurt = "blurt:main"
 [tool.setuptools]
 py-modules = ["blurt"]
 
-[tool.setuptools.dynamic]
-version = {attr = "blurt.__version__"}
+[tool.setuptools_scm]

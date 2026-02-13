@@ -27,7 +27,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 console = Console()
-__version__ = "0.1.2"
+from importlib.metadata import version as _v
+
+__version__ = _v("blurt")
 
 # --- Themes ---
 THEMES = ["ocean", "vapor"]
