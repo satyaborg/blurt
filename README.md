@@ -1,6 +1,8 @@
 # Blurt
 
-Hold right cmd ⌘, speak, release - text appears wherever your cursor is. Runs on-device via [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) on macOS Apple Silicon. No cloud, no API keys and forever free.
+Talk, don't type.
+
+Hold the right cmd ⌘, speak and release - text appears wherever your cursor is. Runs on-device via [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) on macOS Apple Silicon. No cloud, no API keys and forever free.
 
 ## Requirements
 
@@ -10,8 +12,10 @@ Hold right cmd ⌘, speak, release - text appears wherever your cursor is. Runs 
 ## Install
 
 ```bash
-pip install blurt
+pipx install blurt
 ```
+
+Requires [pipx](https://pipx.pypa.io/) (`brew install pipx`).
 
 First run downloads the Whisper model (~1.6 GB).
 
