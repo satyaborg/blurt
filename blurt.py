@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-blurt — on-device speech-to-text for macOS Apple Silicon.
+blurt — Talk, don't type.
 
+On-device speech-to-text for macOS Apple Silicon.
 Hold a hotkey, speak, release — text appears at your cursor.
 Powered by MLX Whisper. No cloud, no API keys.
 
@@ -26,7 +27,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 console = Console()
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 # --- Themes ---
 THEMES = ["ocean", "vapor"]
@@ -129,7 +130,7 @@ def load_model():
             if cached:
                 import huggingface_hub
                 huggingface_hub.utils.disable_progress_bars()
-            with console.status(f"Loading model: {MODEL}{'' if cached else ' (first run downloads ~1.6GB)'}..."):
+            with console.status(f"  Loading{'' if cached else ' (first run downloads ~1.6GB)'}..."):
                 import mlx_whisper
                 # Warm up with empty audio to trigger download/compile
                 dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
@@ -138,7 +139,7 @@ def load_model():
             if cached:
                 import huggingface_hub
                 huggingface_hub.utils.enable_progress_bars()
-            console.print("  [bold green]Model ready.[/bold green]")
+            console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
 
 
 def audio_callback(indata, frames, time_info, status):
