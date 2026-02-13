@@ -13,12 +13,6 @@ Hold right cmd ⌘, speak, release - text appears wherever your cursor is. Runs 
 pip install blurt
 ```
 
-or
-
-```bash
-brew install satyaborg/blurt/blurt
-```
-
 First run downloads the Whisper model (~1.6 GB).
 
 macOS will prompt you to grant your terminal:
