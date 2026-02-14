@@ -25,6 +25,7 @@ dependencies = [
     "pynput",
     "numpy",
     "rich",
+    "pyobjc-framework-ApplicationServices",
 ]
 
 [project.optional-dependencies]
