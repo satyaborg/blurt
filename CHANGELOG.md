@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.2.9](https://github.com/satyaborg/blurt/releases/tag/v0.2.9) — 2026-02-14
+
+### Other
+
+- show download progress ([771f7ac](https://github.com/satyaborg/blurt/commit/771f7ac1e7e9b4fc8b1285e2c956f96bd6d899fd))
 ## [0.2.8](https://github.com/satyaborg/blurt/releases/tag/v0.2.8) — 2026-02-14
 
 ### Bug fixes
@@ -16,6 +21,10 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - add rich table view -log ([5712fb5](https://github.com/satyaborg/blurt/commit/5712fb5285b347335381009b61c30b23c6953f14))
+
+### Other
+
+- changelog v0.2.8 ([fbbe973](https://github.com/satyaborg/blurt/commit/fbbe9730a95d0e208c340c6774a43f54e81a7fc7))
 ## [0.2.7](https://github.com/satyaborg/blurt/releases/tag/v0.2.7) — 2026-02-13
 
 ### Changes
