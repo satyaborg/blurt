@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-blurt — Talk, don't type.
+Blurt — Talk, don't type.
 
 On-device speech-to-text for macOS Apple Silicon.
-Hold a hotkey, speak, release — text appears at your cursor.
+Hold a shortcut, speak, release — text appears at your cursor.
 Powered by MLX Whisper. No cloud, no API keys.
 
 Homepage: https://github.com/satyaborg/blurt
@@ -70,7 +70,7 @@ _apply_theme()
 
 # --- Config ---
 MODEL = "mlx-community/whisper-large-v3-turbo"  # Best accuracy. Alt: "mlx-community/whisper-base-mlx" for speed
-HOTKEY = {keyboard.Key.cmd_r}  # Right Cmd only. Alt: {keyboard.Key.cmd, keyboard.Key.shift}
+SHORTCUT = {keyboard.Key.cmd_r}  # Right Cmd only. Alt: {keyboard.Key.cmd, keyboard.Key.shift}
 SAMPLE_RATE = 16000
 CHANNELS = 1
 BLURT_DIR = Path.home() / ".blurt"
@@ -274,7 +274,7 @@ def paste_to_active():
     ])
 
 
-# --- Hotkey handling ---
+# --- Shortcut handling ---
 # pynput reports cmd_l/cmd_r/shift_l/shift_r specifically; normalize to generic keys
 _KEY_NORMALIZE = {
     keyboard.Key.cmd_l: keyboard.Key.cmd,
@@ -296,14 +296,14 @@ def on_press(key):
         console.print(f"\n  [{C_DIM}]bye[/{C_DIM}]")
         return False
     pressed_keys.add(_normalize(key))
-    if HOTKEY.issubset(pressed_keys):
+    if SHORTCUT.issubset(pressed_keys):
         if not recording:
             threading.Thread(target=start_recording, daemon=True).start()
 
 
 def on_release(key):
     pressed_keys.discard(_normalize(key))
-    if recording and not HOTKEY.issubset(pressed_keys):
+    if recording and not SHORTCUT.issubset(pressed_keys):
         threading.Thread(target=stop_recording, daemon=True).start()
 
 
@@ -328,9 +328,9 @@ def main():
         "alt": "\u2325", "alt_l": "Left \u2325", "alt_r": "Right \u2325",
         "shift": "\u21e7", "shift_l": "Left \u21e7", "shift_r": "Right \u21e7",
     }
-    hotkey_str = "+".join(
+    shortcut_str = "+".join(
         _KEY_NAMES.get(k.name, k.name) if hasattr(k, "name") else str(k)
-        for k in HOTKEY
+        for k in SHORTCUT
     )
     logo_art = (
         "░█▀▄░█░░░█░█░█▀▄░▀█▀\n"
@@ -342,7 +342,7 @@ def main():
     info = Table.grid(padding=(0, 2))
     info.add_column(style=f"bold {C_ACCENT}", justify="right")
     info.add_column()
-    info.add_row("hotkey", hotkey_str)
+    info.add_row("shortcut", shortcut_str)
     info.add_row("model", MODEL.split("/")[-1])
     info.add_row("log", str(JSONL_PATH))
     info.add_row("audio", str(AUDIO_DIR))
@@ -357,7 +357,7 @@ def main():
             f"{hist_words} words \u2022 {hist_wpm:.0f} avg wpm \u2022 {hist_count} blurts"
         )
 
-    console.print(f"\n  [{C_DIM}]esc quit \u2022 hold hotkey to record[/{C_DIM}]\n")
+    console.print(f"\n  [{C_DIM}]esc quit \u2022 hold shortcut to record[/{C_DIM}]\n")
 
     # Pre-load model in background
     threading.Thread(target=load_model, daemon=True).start()
