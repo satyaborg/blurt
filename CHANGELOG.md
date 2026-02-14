@@ -1,11 +1,17 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.3.0](https://github.com/satyaborg/blurt/releases/tag/v0.3.0) — 2026-02-14
+
+### Features
+
+- add tests ([eeccc96](https://github.com/satyaborg/blurt/commit/eeccc966ef500d92a8b10750e14eb2e66160960e))
 ## [0.2.9](https://github.com/satyaborg/blurt/releases/tag/v0.2.9) — 2026-02-14
 
 ### Other
 
 - show download progress ([771f7ac](https://github.com/satyaborg/blurt/commit/771f7ac1e7e9b4fc8b1285e2c956f96bd6d899fd))
+- changelog v0.2.9 ([81ccaf8](https://github.com/satyaborg/blurt/commit/81ccaf8ea62f3ab0347a9a0eada86e268ebb4051))
 ## [0.2.8](https://github.com/satyaborg/blurt/releases/tag/v0.2.8) — 2026-02-14
 
 ### Bug fixes
