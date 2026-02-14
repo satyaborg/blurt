@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Blurt - Talk, don't type.
+Blurt — Talk, don't type.
 
 On-device speech-to-text for macOS Apple Silicon.
 Hold a shortcut, speak, release — text appears at your cursor.
@@ -10,7 +10,6 @@ Homepage: https://github.com/satyaborg/blurt
 License: MIT
 """
 
-import difflib
 import json
 import subprocess
 import sys
@@ -77,7 +76,6 @@ CHANNELS = 1
 BLURT_DIR = Path.home() / ".blurt"
 JSONL_PATH = BLURT_DIR / "blurts.jsonl"
 AUDIO_DIR = BLURT_DIR / "audio"
-VOCAB_PATH = BLURT_DIR / "vocabulary.txt"
 
 # --- State ---
 recording = False
@@ -89,7 +87,6 @@ model_lock = threading.Lock()
 whisper_pipe = None
 rec_status = None
 total_words = 0
-last_pasted_text = None
 
 
 def show_log(n=20):
@@ -197,152 +194,8 @@ def audio_callback(indata, frames, time_info, status):
     audio_buffer.append(indata.copy())
 
 
-# --- Vocabulary learning ---
-
-
-def _levenshtein(a: str, b: str) -> int:
-    """Compute Levenshtein edit distance between two strings."""
-    if len(a) < len(b):
-        return _levenshtein(b, a)
-    if not b:
-        return len(a)
-    prev = list(range(len(b) + 1))
-    for i, ca in enumerate(a):
-        curr = [i + 1]
-        for j, cb in enumerate(b):
-            curr.append(min(prev[j + 1] + 1, curr[j] + 1, prev[j] + (ca != cb)))
-        prev = curr
-    return prev[-1]
-
-
-def _read_focused_text():
-    """Read text value of the currently focused UI element via macOS Accessibility API."""
-    try:
-        from ApplicationServices import AXUIElementCopyAttributeValue, AXUIElementCreateSystemWide
-
-        system = AXUIElementCreateSystemWide()
-        err, focused_app = AXUIElementCopyAttributeValue(system, "AXFocusedApplication", None)
-        if err or not focused_app:
-            return None
-        err, focused_elem = AXUIElementCopyAttributeValue(focused_app, "AXFocusedUIElement", None)
-        if err or not focused_elem:
-            return None
-        err, value = AXUIElementCopyAttributeValue(focused_elem, "AXValue", None)
-        if err:
-            return None
-        return str(value) if value else None
-    except Exception:
-        return None
-
-
-def _extract_corrections(original: str, field_text: str) -> list[tuple[str, str]]:
-    """Extract word-level corrections by diffing original pasted text against edited field text.
-
-    Returns list of (wrong, right) tuples where Levenshtein distance is within threshold.
-    """
-    orig_words = original.split()
-    field_words = field_text.split()
-
-    corrections = []
-    matcher = difflib.SequenceMatcher(None, orig_words, field_words)
-    for op, i1, i2, j1, j2 in matcher.get_opcodes():
-        if op != "replace":
-            continue
-        # For each original word, find the closest match in the replacement field words
-        for orig_w in orig_words[i1:i2]:
-            best_dist = float("inf")
-            best_match = None
-            for new_w in field_words[j1:j2]:
-                dist = _levenshtein(orig_w.lower(), new_w.lower())
-                if dist < best_dist:
-                    best_dist = dist
-                    best_match = new_w
-            if best_match and best_match != orig_w:
-                max_len = max(len(orig_w), len(best_match))
-                if max_len > 0 and best_dist / max_len < 0.5:
-                    corrections.append((orig_w, best_match))
-    return corrections
-
-
-def _load_vocabulary() -> dict[str, str]:
-    """Load vocabulary corrections from file. Returns {wrong_lower: right}."""
-    vocab = {}
-    if VOCAB_PATH.exists():
-        for line in VOCAB_PATH.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            parts = line.split("->")
-            if len(parts) == 2:
-                wrong, right = parts[0].strip(), parts[1].strip()
-                vocab[wrong.lower()] = right
-    return vocab
-
-
-def _save_corrections(corrections: list[tuple[str, str]]):
-    """Append new corrections to vocabulary file."""
-    if not corrections:
-        return
-    existing = _load_vocabulary()
-    new_entries = []
-    for wrong, right in corrections:
-        if wrong.lower() not in existing:
-            new_entries.append(f"{wrong} -> {right}")
-            existing[wrong.lower()] = right
-    if new_entries:
-        with open(VOCAB_PATH, "a") as f:
-            for entry in new_entries:
-                f.write(entry + "\n")
-        console.print(f"  [{C_DIM}]learned: {', '.join(new_entries)}[/{C_DIM}]")
-
-
-def _vocabulary_prompt() -> str:
-    """Build initial_prompt from vocabulary for Whisper keyword boosting."""
-    vocab = _load_vocabulary()
-    if not vocab:
-        return ""
-    words = sorted(set(vocab.values()))
-    return ", ".join(words)
-
-
-def _check_corrections():
-    """Read focused text field and diff against last pasted text to learn corrections."""
-    global last_pasted_text
-    if last_pasted_text is None:
-        return
-
-    field_text = _read_focused_text()
-    pasted = last_pasted_text
-    last_pasted_text = None
-
-    if not field_text:
-        return
-
-    corrections = _extract_corrections(pasted, field_text)
-    if corrections:
-        _save_corrections(corrections)
-
-
-def show_vocab():
-    """Display learned vocabulary."""
-    vocab = _load_vocabulary()
-    if not vocab:
-        console.print(f"  [{C_DIM}]No vocabulary learned yet.[/{C_DIM}]")
-        console.print(f"  [{C_DIM}]Blurt learns corrections automatically as you edit transcriptions.[/{C_DIM}]")
-        return
-
-    table = Table(border_style=C_BORDER)
-    table.add_column("whisper hears", style=C_DIM)
-    table.add_column("corrected to", style=f"bold {C_ACCENT}")
-    for wrong, right in sorted(vocab.items()):
-        table.add_row(wrong, right)
-    console.print(table)
-    console.print(f"  [{C_DIM}]{len(vocab)} entries \u2022 {VOCAB_PATH}[/{C_DIM}]")
-
-
 def start_recording():
     global recording, stream, audio_buffer, rec_status
-    _check_corrections()
     with lock:
         if recording:
             return
@@ -355,7 +208,7 @@ def start_recording():
             callback=audio_callback,
         )
         stream.start()
-        rec_status = console.status(f"  [{C_REC}]Recording...[/{C_REC}]")
+        rec_status = console.status(f"  [{C_REC}]Listening...[/{C_REC}]")
         rec_status.start()
 
 
@@ -404,16 +257,13 @@ def stop_recording():
 
     with console.status(f"  [{C_ACCENT}]Transcribing...[/{C_ACCENT}]"):
         load_model()
-        prompt = _vocabulary_prompt()
-        transcribe_kwargs = dict(
-            path_or_hf_repo=MODEL,
-            language="en",
-            condition_on_previous_text=False,
-        )
-        if prompt:
-            transcribe_kwargs["initial_prompt"] = prompt
         with model_lock:
-            result = whisper_pipe.transcribe(audio_data, **transcribe_kwargs)
+            result = whisper_pipe.transcribe(
+                audio_data,
+                path_or_hf_repo=MODEL,
+                language="en",
+                condition_on_previous_text=False,
+            )
 
     latency_ms = round((time.monotonic() - t0) * 1000)
 
@@ -426,9 +276,7 @@ def stop_recording():
     global total_words
     word_count = len(text.split())
     total_words += word_count
-    global last_pasted_text
     paste_transcription(text)
-    last_pasted_text = text
 
     entry = {
         "ts": ts.isoformat(),
@@ -523,11 +371,6 @@ def main():
         show_log(n)
         return
 
-    if len(sys.argv) >= 2 and sys.argv[1] == "vocab":
-        _apply_theme()
-        show_vocab()
-        return
-
     if sys.platform != "darwin":
         print("blurt requires macOS (uses pbcopy, osascript, and MLX for Apple Silicon)")
         sys.exit(1)
@@ -563,8 +406,6 @@ def main():
     info.add_row("model", MODEL.split("/")[-1])
     info.add_row("log", str(JSONL_PATH))
     info.add_row("audio", str(AUDIO_DIR))
-    vocab = _load_vocabulary()
-    info.add_row("vocab", f"{len(vocab)} words" if vocab else "learning...")
 
     console.print()
     console.print(Panel(logo, border_style=C_BORDER, padding=(1, 3)))
