@@ -13,6 +13,10 @@ if git rev-parse "$tag" >/dev/null 2>&1; then
   exit 1
 fi
 
+git-cliff --tag "$tag" --output CHANGELOG.md
+git add CHANGELOG.md
+git commit -m "changelog $tag"
+
 git tag "$tag"
-git push origin "$tag"
+git push origin main --tags
 echo "Pushed $tag — PyPI publish will start shortly."

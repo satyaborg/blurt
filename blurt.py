@@ -169,15 +169,18 @@ def load_model():
             if cached:
                 import huggingface_hub
                 huggingface_hub.utils.disable_progress_bars()
-            with console.status(f"  Loading{'' if cached else ' (first run downloads ~1.6GB)'}..."):
+                with console.status("  Loading..."):
+                    import mlx_whisper
+                    dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
+                    mlx_whisper.transcribe(dummy, path_or_hf_repo=MODEL, language="en")
+                    whisper_pipe = mlx_whisper
+                huggingface_hub.utils.enable_progress_bars()
+            else:
+                console.print(f"  [{C_ACCENT}]Downloading model (~1.6 GB, first run only)...[/{C_ACCENT}]")
                 import mlx_whisper
-                # Warm up with empty audio to trigger download/compile
                 dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
                 mlx_whisper.transcribe(dummy, path_or_hf_repo=MODEL, language="en")
                 whisper_pipe = mlx_whisper
-            if cached:
-                import huggingface_hub
-                huggingface_hub.utils.enable_progress_bars()
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
 
 
