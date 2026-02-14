@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.3.1](https://github.com/satyaborg/blurt/releases/tag/v0.3.1) — 2026-02-14
+
+### Other
+
+- revert auto-correction ([31f80b5](https://github.com/satyaborg/blurt/commit/31f80b57bf0e5fc3bd3adcff710f32e067617f35))
 ## [0.4.0](https://github.com/satyaborg/blurt/releases/tag/v0.4.0) — 2026-02-14
 
 ### Features
 
 - add vocab, keyword boosting and auto-correction ([9d78b6c](https://github.com/satyaborg/blurt/commit/9d78b6cba0fc7a9b6bd5fb8a19400a97e9a818a6))
+
+### Other
+
+- changelog v0.4.0 ([5e7fd01](https://github.com/satyaborg/blurt/commit/5e7fd01d5148da21e4c89ea784316df284017bda))
 ## [0.3.0](https://github.com/satyaborg/blurt/releases/tag/v0.3.0) — 2026-02-14
 
 ### Features
