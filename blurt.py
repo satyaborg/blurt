@@ -10,12 +10,12 @@ Homepage: https://github.com/satyaborg/blurt
 License: MIT
 """
 
-import sys
 import json
+import subprocess
+import sys
+import threading
 import time
 import wave
-import subprocess
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -154,6 +154,7 @@ def _model_is_cached(repo_id: str) -> bool:
     """Check if a HuggingFace model is already downloaded."""
     try:
         from huggingface_hub import scan_cache_dir
+
         cache_info = scan_cache_dir()
         return any(r.repo_id == repo_id for r in cache_info.repos)
     except Exception:
@@ -168,9 +169,11 @@ def load_model():
             cached = _model_is_cached(MODEL)
             if cached:
                 import huggingface_hub
+
                 huggingface_hub.utils.disable_progress_bars()
                 with console.status("  Loading..."):
                     import mlx_whisper
+
                     dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
                     mlx_whisper.transcribe(dummy, path_or_hf_repo=MODEL, language="en")
                     whisper_pipe = mlx_whisper
@@ -178,6 +181,7 @@ def load_model():
             else:
                 console.print(f"  [{C_ACCENT}]Downloading model (~1.6 GB, first run only)...[/{C_ACCENT}]")
                 import mlx_whisper
+
                 dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
                 mlx_whisper.transcribe(dummy, path_or_hf_repo=MODEL, language="en")
                 whisper_pipe = mlx_whisper
@@ -284,10 +288,7 @@ def stop_recording():
     with open(JSONL_PATH, "a") as f:
         f.write(json.dumps(entry) + "\n")
     preview = text[:60] + ("..." if len(text) > 60 else "")
-    console.print(
-        f"  [{C_OK}]\u2713[/{C_OK}] \"{preview}\" "
-        f"[{C_DIM}]{latency_ms}ms[/{C_DIM}]"
-    )
+    console.print(f'  [{C_OK}]\u2713[/{C_OK}] "{preview}" [{C_DIM}]{latency_ms}ms[/{C_DIM}]')
 
 
 def save_wav(path: Path, audio: np.ndarray):
@@ -315,10 +316,13 @@ def paste_transcription(text: str):
     prev = _get_clipboard()
     _set_clipboard(text.encode("utf-8"))
     time.sleep(0.15)
-    subprocess.run([
-        "osascript", "-e",
-        'tell application "System Events" to keystroke "v" using command down',
-    ])
+    subprocess.run(
+        [
+            "osascript",
+            "-e",
+            'tell application "System Events" to keystroke "v" using command down',
+        ]
+    )
     time.sleep(0.1)
     _set_clipboard(prev)
 
@@ -378,20 +382,21 @@ def main():
     total_words = hist_words
 
     _KEY_NAMES = {
-        "cmd": "\u2318", "cmd_l": "Left \u2318", "cmd_r": "Right \u2318",
-        "ctrl": "\u2303", "ctrl_l": "Left \u2303", "ctrl_r": "Right \u2303",
-        "alt": "\u2325", "alt_l": "Left \u2325", "alt_r": "Right \u2325",
-        "shift": "\u21e7", "shift_l": "Left \u21e7", "shift_r": "Right \u21e7",
+        "cmd": "\u2318",
+        "cmd_l": "Left \u2318",
+        "cmd_r": "Right \u2318",
+        "ctrl": "\u2303",
+        "ctrl_l": "Left \u2303",
+        "ctrl_r": "Right \u2303",
+        "alt": "\u2325",
+        "alt_l": "Left \u2325",
+        "alt_r": "Right \u2325",
+        "shift": "\u21e7",
+        "shift_l": "Left \u21e7",
+        "shift_r": "Right \u21e7",
     }
-    shortcut_str = "+".join(
-        _KEY_NAMES.get(k.name, k.name) if hasattr(k, "name") else str(k)
-        for k in SHORTCUT
-    )
-    logo_art = (
-        "░█▀▄░█░░░█░█░█▀▄░▀█▀\n"
-        "░█▀▄░█░░░█░█░█▀▄░░█░\n"
-        "░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░"
-    )
+    shortcut_str = "+".join(_KEY_NAMES.get(k.name, k.name) if hasattr(k, "name") else str(k) for k in SHORTCUT)
+    logo_art = "░█▀▄░█░░░█░█░█▀▄░▀█▀\n░█▀▄░█░░░█░█░█▀▄░░█░\n░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░"
     logo = f"[{C_ACCENT}]{logo_art}[/{C_ACCENT}]\n[{C_DIM}]v{__version__}[/{C_DIM}]"
 
     info = Table.grid(padding=(0, 2))
