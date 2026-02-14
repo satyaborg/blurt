@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.3.3](https://github.com/satyaborg/blurt/releases/tag/v0.3.3) — 2026-02-14
+
+### Changes
+
+- update readme ([b2ffbc0](https://github.com/satyaborg/blurt/commit/b2ffbc058998dda0655fe868a4ab11e3f717ffea))
 ## [0.3.2](https://github.com/satyaborg/blurt/releases/tag/v0.3.2) — 2026-02-14
 
 ### Features
 
 - add vocab, refactor ([fbf8537](https://github.com/satyaborg/blurt/commit/fbf853774051183c0a4e5493316fce2056b2a910))
+
+### Other
+
+- changelog v0.3.2 ([dcc6835](https://github.com/satyaborg/blurt/commit/dcc6835b51b18b6ad179a50b6b6943fa6e64ea69))
 ## [0.3.1](https://github.com/satyaborg/blurt/releases/tag/v0.3.1) — 2026-02-14
 
 ### Features
