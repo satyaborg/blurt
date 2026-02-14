@@ -112,15 +112,13 @@ def show_log(n=20):
     table = Table(border_style=C_BORDER)
     table.add_column("#", style=f"bold {C_ACCENT}", justify="right")
     table.add_column("time", style=C_DIM)
-    table.add_column("text", max_width=80)
+    table.add_column("text", max_width=80, no_wrap=False)
     table.add_column("dur", style=C_DIM, justify="right")
     table.add_column("words", style=C_ACCENT, justify="right")
 
     for i, e in enumerate(entries, 1):
         ts = datetime.fromisoformat(e["ts"]).strftime("%Y-%m-%d %H:%M:%S")
         text = e.get("text", "")
-        if len(text) > 80:
-            text = text[:77] + "..."
         dur = f"{e.get('duration_s', 0)}s"
         words = str(e.get("words", 0))
         table.add_row(str(i), ts, text, dur, words)
