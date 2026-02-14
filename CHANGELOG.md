@@ -1,12 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.3.2](https://github.com/satyaborg/blurt/releases/tag/v0.3.2) — 2026-02-14
+
+### Features
+
+- add vocab, refactor ([fbf8537](https://github.com/satyaborg/blurt/commit/fbf853774051183c0a4e5493316fce2056b2a910))
 ## [0.3.1](https://github.com/satyaborg/blurt/releases/tag/v0.3.1) — 2026-02-14
-
-### Other
-
-- revert auto-correction ([31f80b5](https://github.com/satyaborg/blurt/commit/31f80b57bf0e5fc3bd3adcff710f32e067617f35))
-## [0.4.0](https://github.com/satyaborg/blurt/releases/tag/v0.4.0) — 2026-02-14
 
 ### Features
 
@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
 ### Other
 
 - changelog v0.4.0 ([5e7fd01](https://github.com/satyaborg/blurt/commit/5e7fd01d5148da21e4c89ea784316df284017bda))
+- revert auto-correction ([31f80b5](https://github.com/satyaborg/blurt/commit/31f80b57bf0e5fc3bd3adcff710f32e067617f35))
+- changelog v0.3.1 ([5879f6e](https://github.com/satyaborg/blurt/commit/5879f6ef3abec33d8acf462cf48dfc8a2afe7553))
 ## [0.3.0](https://github.com/satyaborg/blurt/releases/tag/v0.3.0) — 2026-02-14
 
 ### Features
