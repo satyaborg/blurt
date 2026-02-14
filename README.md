@@ -4,7 +4,7 @@ Talk, don't type.
 
 ![demo](https://raw.githubusercontent.com/satyaborg/blurt/main/demo.gif)
 
-Hold the right cmd ⌘, speak and release - text appears wherever your cursor is. Runs on-device on macOS Apple Silicon. No cloud, no API keys and forever free.
+Hold the right cmd ⌘, speak and release - text appears wherever your cursor is. Runs on-device on macOS Apple Silicon.
 
 ## Requirements
 
@@ -29,15 +29,15 @@ macOS will prompt you to grant your terminal:
 
 ## Vocab
 
-Add words Whisper often gets wrong (names, jargon, acronyms):
+Add words STT models often get wrong (names, jargon, acronyms):
 
 ```bash
-blurt vocab add Claude Code
-blurt vocab                  # list
+blurt vocab add Claude Code   # add
+blurt vocab                   # list
 blurt vocab rm Claude Code    # remove
 ```
 
-Stored in `~/.blurt/vocab.txt`, one per line.
+Or edit manually in `~/.blurt/vocab.txt`.
 
 ## Contributing
 
@@ -51,7 +51,7 @@ This installs the local version of blurt. After making changes, re-run `pipx ins
 
 ## Privacy
 
-Your audio never leaves your Mac. Everything — recording, transcription, model inference — runs locally. No network calls, no telemetry, no accounts.
+Your audio never leaves your Mac. Everything including recording, transcription and inference runs locally. No network calls, no telemetry, no accounts, and no API keys needed.
 
 ## License
 
