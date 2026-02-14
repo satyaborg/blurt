@@ -27,6 +27,18 @@ macOS will prompt you to grant your terminal:
 - **Microphone** access
 - **Accessibility** access (System Settings → Privacy & Security)
 
+## Vocab
+
+Add words Whisper often gets wrong (names, jargon, acronyms):
+
+```bash
+blurt vocab add Claude Code
+blurt vocab                  # list
+blurt vocab rm Claude Code    # remove
+```
+
+Stored in `~/.blurt/vocab.txt`, one per line.
+
 ## Contributing
 
 ```bash

@@ -37,7 +37,10 @@ Homepage = "https://github.com/satyaborg/blurt"
 blurt = "blurt:main"
 
 [tool.setuptools]
-py-modules = ["blurt"]
+packages = ["blurt"]
+
+[tool.setuptools.package-data]
+blurt = ["sounds/*.mp3"]
 
 [tool.ruff]
 line-length = 120
@@ -46,7 +49,7 @@ line-length = 120
 select = ["E", "F", "I"]
 
 [tool.ruff.lint.per-file-ignores]
-"blurt.py" = ["E402"]
+"blurt/__init__.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

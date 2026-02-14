@@ -149,3 +149,109 @@ def test_normalize_passthrough():
     from pynput import keyboard
 
     assert blurt._normalize(keyboard.Key.space) == keyboard.Key.space
+
+
+# --- Vocab ---
+
+
+def test_load_vocab_no_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(blurt, "VOCAB_PATH", tmp_path / "missing.txt")
+    assert blurt._load_vocab() == []
+
+
+def test_load_vocab_with_words(tmp_path, monkeypatch):
+    vocab = tmp_path / "vocab.txt"
+    vocab.write_text("Blurt\nMLX Whisper\n\n  spaced  \n")
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    assert blurt._load_vocab() == ["Blurt", "MLX Whisper", "spaced"]
+
+
+def test_save_vocab(tmp_path, monkeypatch):
+    vocab = tmp_path / "vocab.txt"
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    blurt._save_vocab(["hello", "world"])
+    assert vocab.read_text() == "hello\nworld\n"
+
+
+def test_save_vocab_empty(tmp_path, monkeypatch):
+    vocab = tmp_path / "vocab.txt"
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    blurt._save_vocab([])
+    assert vocab.read_text() == ""
+
+
+def test_vocab_prompt_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(blurt, "VOCAB_PATH", tmp_path / "missing.txt")
+    assert blurt._vocab_prompt() is None
+
+
+def test_vocab_prompt_with_words(tmp_path, monkeypatch):
+    vocab = tmp_path / "vocab.txt"
+    vocab.write_text("Blurt\nMLX\n")
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    assert blurt._vocab_prompt() == "Blurt, MLX"
+
+
+def test_add_vocab(tmp_path, monkeypatch):
+    vocab = tmp_path / "vocab.txt"
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    blurt.add_vocab("Kubernetes")
+    assert "Kubernetes" in blurt._load_vocab()
+
+
+def test_add_vocab_duplicate(tmp_path, monkeypatch, capsys):
+    vocab = tmp_path / "vocab.txt"
+    vocab.write_text("Kubernetes\n")
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    blurt.add_vocab("Kubernetes")
+    assert blurt._load_vocab() == ["Kubernetes"]
+    captured = capsys.readouterr()
+    assert "Already" in captured.out
+
+
+def test_rm_vocab(tmp_path, monkeypatch):
+    vocab = tmp_path / "vocab.txt"
+    vocab.write_text("Blurt\nKubernetes\n")
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    blurt.rm_vocab("Kubernetes")
+    assert blurt._load_vocab() == ["Blurt"]
+
+
+def test_rm_vocab_missing(tmp_path, monkeypatch, capsys):
+    vocab = tmp_path / "vocab.txt"
+    vocab.write_text("Blurt\n")
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    blurt.rm_vocab("nope")
+    captured = capsys.readouterr()
+    assert "Not in vocab" in captured.out
+
+
+def test_vocab_cli_list(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(blurt, "VOCAB_PATH", tmp_path / "missing.txt")
+    with patch.object(sys, "argv", ["blurt", "vocab"]):
+        blurt.main()
+    captured = capsys.readouterr()
+    assert "No vocab words yet" in captured.out
+
+
+def test_vocab_cli_add(tmp_path, monkeypatch, capsys):
+    vocab = tmp_path / "vocab.txt"
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", "vocab", "add", "MLX", "Whisper"]):
+        blurt.main()
+    assert "MLX Whisper" in blurt._load_vocab()
+
+
+def test_vocab_cli_rm(tmp_path, monkeypatch, capsys):
+    vocab = tmp_path / "vocab.txt"
+    vocab.write_text("MLX Whisper\n")
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    with patch.object(sys, "argv", ["blurt", "vocab", "rm", "MLX", "Whisper"]):
+        blurt.main()
+    assert blurt._load_vocab() == []

@@ -76,6 +76,8 @@ CHANNELS = 1
 BLURT_DIR = Path.home() / ".blurt"
 JSONL_PATH = BLURT_DIR / "blurts.jsonl"
 AUDIO_DIR = BLURT_DIR / "audio"
+VOCAB_PATH = BLURT_DIR / "vocab.txt"
+SOUNDS_DIR = Path(__file__).parent / "sounds"
 
 # --- State ---
 recording = False
@@ -150,6 +152,69 @@ def ensure_dirs():
     AUDIO_DIR.mkdir(exist_ok=True)
 
 
+# --- Vocab ---
+
+
+def _load_vocab():
+    """Load vocabulary words from vocab.txt, one per line."""
+    if not VOCAB_PATH.exists():
+        return []
+    lines = VOCAB_PATH.read_text().strip().splitlines()
+    return [line.strip() for line in lines if line.strip()]
+
+
+def _save_vocab(words):
+    """Write vocabulary words to vocab.txt."""
+    VOCAB_PATH.write_text("\n".join(words) + "\n" if words else "")
+
+
+def _vocab_prompt():
+    """Build an initial_prompt string from vocab words for keyword boosting."""
+    words = _load_vocab()
+    if not words:
+        return None
+    return ", ".join(words)
+
+
+def show_vocab():
+    """Display current vocabulary as a Rich table."""
+    words = _load_vocab()
+    console.print(f"  [{C_DIM}]{VOCAB_PATH}[/{C_DIM}]")
+    if not words:
+        console.print(f"  [{C_DIM}]No vocab words yet. Add with: blurt vocab add <word>[/{C_DIM}]")
+        return
+    table = Table(border_style=C_BORDER)
+    table.add_column("#", style=f"bold {C_ACCENT}", justify="right")
+    table.add_column("word / phrase")
+    for i, w in enumerate(words, 1):
+        table.add_row(str(i), w)
+    console.print(table)
+    console.print(f"  [{C_DIM}]{len(words)} word(s)[/{C_DIM}]")
+
+
+def add_vocab(phrase):
+    """Add a word or phrase to the vocabulary."""
+    ensure_dirs()
+    words = _load_vocab()
+    if phrase in words:
+        console.print(f"  [{C_DIM}]Already in vocab: {phrase}[/{C_DIM}]")
+        return
+    words.append(phrase)
+    _save_vocab(words)
+    console.print(f"  [{C_OK}]\u2713[/{C_OK}] Added: {phrase}")
+
+
+def rm_vocab(phrase):
+    """Remove a word or phrase from the vocabulary."""
+    words = _load_vocab()
+    if phrase not in words:
+        console.print(f"  [{C_DIM}]Not in vocab: {phrase}[/{C_DIM}]")
+        return
+    words.remove(phrase)
+    _save_vocab(words)
+    console.print(f"  [{C_OK}]\u2713[/{C_OK}] Removed: {phrase}")
+
+
 def _model_is_cached(repo_id: str) -> bool:
     """Check if a HuggingFace model is already downloaded."""
     try:
@@ -188,6 +253,13 @@ def load_model():
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
 
 
+def _play_sound(name):
+    """Play a sound file asynchronously (non-blocking)."""
+    path = SOUNDS_DIR / f"{name}.mp3"
+    if path.exists():
+        subprocess.Popen(["afplay", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def audio_callback(indata, frames, time_info, status):
     if status:
         console.print(f"Audio: {status}", style="yellow")
@@ -208,6 +280,7 @@ def start_recording():
             callback=audio_callback,
         )
         stream.start()
+        _play_sound("on")
         rec_status = console.status(f"  [{C_REC}]Listening...[/{C_REC}]")
         rec_status.start()
 
@@ -232,6 +305,7 @@ def stop_recording():
         if not recording:
             return
         recording = False
+        _play_sound("off")
         if rec_status:
             rec_status.stop()
             rec_status = None
@@ -249,6 +323,11 @@ def stop_recording():
     if duration_s < 0.5:
         return
 
+    # Skip silence — prevents vocab hallucinations from initial_prompt
+    rms = np.sqrt(np.mean(audio_data**2))
+    if rms < 0.003:
+        return
+
     t0 = time.monotonic()
 
     ts = datetime.now(timezone.utc)
@@ -257,13 +336,18 @@ def stop_recording():
 
     with console.status(f"  [{C_ACCENT}]Transcribing...[/{C_ACCENT}]"):
         load_model()
+        transcribe_kwargs = dict(
+            path_or_hf_repo=MODEL,
+            language="en",
+            condition_on_previous_text=False,
+            temperature=0.0,
+            without_timestamps=True,
+        )
+        prompt = _vocab_prompt()
+        if prompt:
+            transcribe_kwargs["initial_prompt"] = prompt
         with model_lock:
-            result = whisper_pipe.transcribe(
-                audio_data,
-                path_or_hf_repo=MODEL,
-                language="en",
-                condition_on_previous_text=False,
-            )
+            result = whisper_pipe.transcribe(audio_data, **transcribe_kwargs)
 
     latency_ms = round((time.monotonic() - t0) * 1000)
 
@@ -371,6 +455,15 @@ def main():
         show_log(n)
         return
 
+    if len(sys.argv) >= 2 and sys.argv[1] == "vocab":
+        if len(sys.argv) >= 4 and sys.argv[2] == "add":
+            add_vocab(" ".join(sys.argv[3:]))
+        elif len(sys.argv) >= 4 and sys.argv[2] == "rm":
+            rm_vocab(" ".join(sys.argv[3:]))
+        else:
+            show_vocab()
+        return
+
     if sys.platform != "darwin":
         print("blurt requires macOS (uses pbcopy, osascript, and MLX for Apple Silicon)")
         sys.exit(1)
@@ -406,16 +499,20 @@ def main():
     info.add_row("model", MODEL.split("/")[-1])
     info.add_row("log", str(JSONL_PATH))
     info.add_row("audio", str(AUDIO_DIR))
+    vocab_count = len(_load_vocab())
+    info.add_row("vocab", str(VOCAB_PATH))
 
     console.print()
     console.print(Panel(logo, border_style=C_BORDER, padding=(1, 3)))
     console.print(info)
 
-    if hist_count > 0:
-        console.print(
-            f"\n  [{C_ACCENT}]stats[/{C_ACCENT}]  "
-            f"{hist_words} words \u2022 {hist_wpm:.0f} avg wpm \u2022 {hist_count} blurts"
-        )
+    if hist_count > 0 or vocab_count > 0:
+        parts = []
+        if hist_count > 0:
+            parts.extend([f"{hist_words} words", f"{hist_wpm:.0f} avg wpm", f"{hist_count} blurts"])
+        if vocab_count > 0:
+            parts.append(f"{vocab_count} vocab")
+        console.print(f"\n  [{C_ACCENT}]stats[/{C_ACCENT}]  " + " \u2022 ".join(parts))
 
     console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 hold shortcut to record[/{C_DIM}]\n")
 
