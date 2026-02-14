@@ -27,6 +27,16 @@ macOS will prompt you to grant your terminal:
 - **Microphone** access
 - **Accessibility** access (System Settings → Privacy & Security)
 
+## Contributing
+
+```bash
+git clone https://github.com/satyaborg/blurt.git
+cd blurt
+pipx install . --force
+```
+
+This installs the local version of blurt. After making changes, re-run `pipx install . --force` to test them.
+
 ## Privacy
 
 Your audio never leaves your Mac. Everything — recording, transcription, model inference — runs locally. No network calls, no telemetry, no accounts.

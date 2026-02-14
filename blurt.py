@@ -232,8 +232,7 @@ def stop_recording():
     global total_words
     word_count = len(text.split())
     total_words += word_count
-    copy_to_clipboard(text)
-    paste_to_active()
+    paste_transcription(text)
 
     entry = {
         "ts": ts.isoformat(),
@@ -260,18 +259,28 @@ def save_wav(path: Path, audio: np.ndarray):
         wf.writeframes(audio_int16.tobytes())
 
 
-def copy_to_clipboard(text: str):
-    process = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-    process.communicate(text.encode("utf-8"))
+def _get_clipboard():
+    """Read current clipboard contents."""
+    result = subprocess.run(["pbpaste"], capture_output=True)
+    return result.stdout
 
 
-def paste_to_active():
-    """Simulate Cmd+V to paste into whatever input is focused."""
+def _set_clipboard(data: bytes):
+    proc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+    proc.communicate(data)
+
+
+def paste_transcription(text: str):
+    """Copy text, paste it, then restore the previous clipboard."""
+    prev = _get_clipboard()
+    _set_clipboard(text.encode("utf-8"))
     time.sleep(0.15)
     subprocess.run([
         "osascript", "-e",
         'tell application "System Events" to keystroke "v" using command down',
     ])
+    time.sleep(0.1)
+    _set_clipboard(prev)
 
 
 # --- Shortcut handling ---
