@@ -292,9 +292,6 @@ def _normalize(key):
 
 
 def on_press(key):
-    if key == keyboard.Key.esc:
-        console.print(f"\n  [{C_DIM}]bye[/{C_DIM}]")
-        return False
     pressed_keys.add(_normalize(key))
     if SHORTCUT.issubset(pressed_keys):
         if not recording:
@@ -357,13 +354,16 @@ def main():
             f"{hist_words} words \u2022 {hist_wpm:.0f} avg wpm \u2022 {hist_count} blurts"
         )
 
-    console.print(f"\n  [{C_DIM}]esc quit \u2022 hold shortcut to record[/{C_DIM}]\n")
+    console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 hold shortcut to record[/{C_DIM}]\n")
 
     # Pre-load model in background
     threading.Thread(target=load_model, daemon=True).start()
 
-    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
-        listener.join()
+    try:
+        with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+            listener.join()
+    except KeyboardInterrupt:
+        console.print(f"\n  [{C_DIM}]bye[/{C_DIM}]")
 
 
 if __name__ == "__main__":
