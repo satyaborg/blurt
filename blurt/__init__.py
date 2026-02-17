@@ -444,14 +444,14 @@ def on_release(key):
 def show_help():
     """Print CLI usage."""
     console.print(f"\n  [bold {C_ACCENT}]blurt[/bold {C_ACCENT}] — on-device speech-to-text for macOS\n")
-    console.print(f"  [bold]Usage:[/bold]")
-    console.print(f"    blurt                      start listening (hold shortcut to record)")
-    console.print(f"    blurt add <word/phrase>     add word to vocab for better recognition")
-    console.print(f"    blurt rm <word/phrase>      remove word from vocab")
-    console.print(f"    blurt vocab                 list vocab words")
-    console.print(f"    blurt log [-n N]            show recent transcriptions (default 20)")
-    console.print(f"    blurt help                  show this help")
-    console.print(f"    blurt --version             show version")
+    console.print("  [bold]Usage:[/bold]")
+    console.print("    blurt                      start listening (hold shortcut to record)")
+    console.print("    blurt add <word/phrase>     add word to vocab for better recognition")
+    console.print("    blurt rm <word/phrase>      remove word from vocab")
+    console.print("    blurt vocab                 list vocab words")
+    console.print("    blurt log [-n N]            show recent transcriptions (default 20)")
+    console.print("    blurt help                  show this help")
+    console.print("    blurt --version             show version")
     console.print()
 
 
