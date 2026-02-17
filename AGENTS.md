@@ -44,7 +44,7 @@ Single module: `blurt.py` contains everything. No packages, no submodules.
 
 ## Vocab
 
-`~/.blurt/vocab.txt` — one word/phrase per line. Joined into `initial_prompt` for `mlx_whisper.transcribe()` to bias recognition. CLI: `blurt vocab [add|rm] <phrase>`.
+`~/.blurt/vocab.txt` — one word/phrase per line. Joined into `initial_prompt` for `mlx_whisper.transcribe()` to bias recognition. CLI: `blurt add <phrase>`, `blurt rm <phrase>`, `blurt vocab` (list).
 
 ## Conventions
 

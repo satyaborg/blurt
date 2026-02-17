@@ -181,7 +181,7 @@ def show_vocab():
     words = _load_vocab()
     console.print(f"  [{C_DIM}]{VOCAB_PATH}[/{C_DIM}]")
     if not words:
-        console.print(f"  [{C_DIM}]No vocab words yet. Add with: blurt vocab add <word>[/{C_DIM}]")
+        console.print(f"  [{C_DIM}]No vocab words yet. Add with: blurt add <word>[/{C_DIM}]")
         return
     table = Table(border_style=C_BORDER)
     table.add_column("#", style=f"bold {C_ACCENT}", justify="right")
@@ -441,9 +441,27 @@ def on_release(key):
         threading.Thread(target=stop_recording, daemon=True).start()
 
 
+def show_help():
+    """Print CLI usage."""
+    console.print(f"\n  [bold {C_ACCENT}]blurt[/bold {C_ACCENT}] — on-device speech-to-text for macOS\n")
+    console.print(f"  [bold]Usage:[/bold]")
+    console.print(f"    blurt                      start listening (hold shortcut to record)")
+    console.print(f"    blurt add <word/phrase>     add word to vocab for better recognition")
+    console.print(f"    blurt rm <word/phrase>      remove word from vocab")
+    console.print(f"    blurt vocab                 list vocab words")
+    console.print(f"    blurt log [-n N]            show recent transcriptions (default 20)")
+    console.print(f"    blurt help                  show this help")
+    console.print(f"    blurt --version             show version")
+    console.print()
+
+
 def main():
     if "--version" in sys.argv:
         print(f"blurt {__version__}")
+        return
+
+    if len(sys.argv) >= 2 and sys.argv[1] in ("help", "--help", "-h"):
+        show_help()
         return
 
     if len(sys.argv) >= 2 and sys.argv[1] == "log":
@@ -456,13 +474,21 @@ def main():
         return
 
     if len(sys.argv) >= 2 and sys.argv[1] == "vocab":
-        if len(sys.argv) >= 4 and sys.argv[2] == "add":
-            add_vocab(" ".join(sys.argv[3:]))
-        elif len(sys.argv) >= 4 and sys.argv[2] == "rm":
-            rm_vocab(" ".join(sys.argv[3:]))
-        else:
-            show_vocab()
+        show_vocab()
         return
+
+    if len(sys.argv) >= 3 and sys.argv[1] == "add":
+        add_vocab(" ".join(sys.argv[2:]))
+        return
+
+    if len(sys.argv) >= 3 and sys.argv[1] == "rm":
+        rm_vocab(" ".join(sys.argv[2:]))
+        return
+
+    if len(sys.argv) >= 2 and not sys.argv[1].startswith("-"):
+        console.print(f"  [red]unknown command:[/red] {sys.argv[1]}")
+        show_help()
+        sys.exit(1)
 
     if sys.platform != "darwin":
         print("blurt requires macOS (uses pbcopy, osascript, and MLX for Apple Silicon)")

@@ -243,7 +243,7 @@ def test_vocab_cli_add(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
     monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
     monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
-    with patch.object(sys, "argv", ["blurt", "vocab", "add", "MLX", "Whisper"]):
+    with patch.object(sys, "argv", ["blurt", "add", "MLX", "Whisper"]):
         blurt.main()
     assert "MLX Whisper" in blurt._load_vocab()
 
@@ -252,6 +252,6 @@ def test_vocab_cli_rm(tmp_path, monkeypatch, capsys):
     vocab = tmp_path / "vocab.txt"
     vocab.write_text("MLX Whisper\n")
     monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
-    with patch.object(sys, "argv", ["blurt", "vocab", "rm", "MLX", "Whisper"]):
+    with patch.object(sys, "argv", ["blurt", "rm", "MLX", "Whisper"]):
         blurt.main()
     assert blurt._load_vocab() == []
