@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.3.7](https://github.com/satyaborg/blurt/releases/tag/v0.3.7) — 2026-02-17
+
+### Bug fixes
+
+- fix typo ([df34ba2](https://github.com/satyaborg/blurt/commit/df34ba222f04fa77cedbd2f1b028cc7b4acb02b4))
 ## [0.3.6](https://github.com/satyaborg/blurt/releases/tag/v0.3.6) — 2026-02-17
 
 ### Bug fixes
 
 - fix f-string linting ([beff3e3](https://github.com/satyaborg/blurt/commit/beff3e3158466eb98f9cb7ca2ee340a460b2183c))
+
+### Other
+
+- changelog v0.3.6 ([d8700b8](https://github.com/satyaborg/blurt/commit/d8700b81e7864ba22e93367c06f4799d8b0499c9))
 ## [0.3.5](https://github.com/satyaborg/blurt/releases/tag/v0.3.5) — 2026-02-17
 
 ### Changes
