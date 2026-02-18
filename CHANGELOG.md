@@ -1,11 +1,24 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.4.4](https://github.com/satyaborg/blurt/releases/tag/v0.4.4) — 2026-02-18
+
+### Changes
+
+- mod readme ([b301a24](https://github.com/satyaborg/blurt/commit/b301a24fd6a63363ffd031e21eedfbf69139bbef))
+
+### Features
+
+- add logo ([f0dd38d](https://github.com/satyaborg/blurt/commit/f0dd38d5aeb0729e1ac109147aa2bce1bc176a8d))
 ## [0.4.3](https://github.com/satyaborg/blurt/releases/tag/v0.4.3) — 2026-02-18
 
 ### Changes
 
 - update documentation ([9a635e3](https://github.com/satyaborg/blurt/commit/9a635e39c9d7b546f365299971ed54e1bf0d965e))
+
+### Other
+
+- changelog v0.4.3 ([9a77f07](https://github.com/satyaborg/blurt/commit/9a77f0716831f97f40f09f7cc475568c717fcecf))
 ## [0.4.2](https://github.com/satyaborg/blurt/releases/tag/v0.4.2) — 2026-02-18
 
 ### Changes
