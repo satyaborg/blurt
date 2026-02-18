@@ -11,6 +11,7 @@ License: MIT
 """
 
 import json
+import shutil
 import subprocess
 import sys
 import threading
@@ -18,6 +19,8 @@ import time
 import wave
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import numpy as np
 import sounddevice as sd
@@ -293,7 +296,8 @@ def start_recording():
                     lock.acquire()
                 else:
                     recording = False
-                    console.print(f"  [{C_REC}]Audio device unavailable — replug or switch input and try again[/{C_REC}]")
+                    msg = "Audio device unavailable — replug or switch input and try again"
+                    console.print(f"  [{C_REC}]{msg}[/{C_REC}]")
                     return
         _play_sound("on")
         rec_status = console.status(f"  [{C_REC}]Listening...[/{C_REC}]")
@@ -456,6 +460,38 @@ def on_release(key):
         threading.Thread(target=stop_recording, daemon=True).start()
 
 
+def cmd_upgrade():
+    """Check PyPI for a newer version and upgrade if available."""
+    console.print(f"\n  [{C_DIM}]checking for updates...[/{C_DIM}]")
+    try:
+        resp = urlopen("https://pypi.org/pypi/blurt/json", timeout=10)
+        data = json.loads(resp.read())
+        latest = data["info"]["version"]
+    except (URLError, OSError, json.JSONDecodeError, KeyError):
+        console.print("  [red]couldn't check for updates — try manually:[/red]")
+        console.print(f"  [{C_DIM}]pipx upgrade blurt[/{C_DIM}]\n")
+        sys.exit(1)
+
+    from packaging.version import Version
+
+    if Version(latest) <= Version(__version__):
+        console.print(f"  blurt [bold {C_ACCENT}]v{__version__}[/bold {C_ACCENT}] is up to date\n")
+        return
+
+    console.print(
+        f"  blurt [bold {C_ACCENT}]v{__version__}[/bold {C_ACCENT}] → [bold {C_ACCENT}]v{latest}[/bold {C_ACCENT}]"
+    )
+
+    # Detect install method and upgrade
+    if shutil.which("pipx"):
+        cmd = ["pipx", "upgrade", "blurt"]
+    else:
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "blurt"]
+
+    console.print(f"  [{C_DIM}]{' '.join(cmd)}[/{C_DIM}]\n")
+    sys.exit(subprocess.call(cmd))
+
+
 def show_help():
     """Print CLI usage."""
     console.print(f"\n  [bold {C_ACCENT}]blurt[/bold {C_ACCENT}] — on-device speech-to-text for macOS\n")
@@ -465,6 +501,7 @@ def show_help():
     console.print("    blurt rm <word/phrase>      remove word from vocab")
     console.print("    blurt vocab                 list vocab words")
     console.print("    blurt log [-n N]            show recent transcriptions (default 20)")
+    console.print("    blurt upgrade               check for updates and upgrade")
     console.print("    blurt help                  show this help")
     console.print("    blurt --version             show version")
     console.print()
@@ -498,6 +535,10 @@ def main():
 
     if len(sys.argv) >= 3 and sys.argv[1] == "rm":
         rm_vocab(" ".join(sys.argv[2:]))
+        return
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "upgrade":
+        cmd_upgrade()
         return
 
     if len(sys.argv) >= 2 and not sys.argv[1].startswith("-"):
