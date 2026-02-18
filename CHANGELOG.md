@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.5.0](https://github.com/satyaborg/blurt/releases/tag/v0.5.0) — 2026-02-18
+
+### Features
+
+- add auto filepath resolution ([946751f](https://github.com/satyaborg/blurt/commit/946751f193bc32cbc9b9e9cc8bcc821fe86ddcea))
 ## [0.4.4](https://github.com/satyaborg/blurt/releases/tag/v0.4.4) — 2026-02-18
 
 ### Changes
@@ -10,6 +15,10 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - add logo ([f0dd38d](https://github.com/satyaborg/blurt/commit/f0dd38d5aeb0729e1ac109147aa2bce1bc176a8d))
+
+### Other
+
+- changelog v0.4.4 ([eb115d7](https://github.com/satyaborg/blurt/commit/eb115d73c2ede04cab1b0193107d947ed5e57011))
 ## [0.4.3](https://github.com/satyaborg/blurt/releases/tag/v0.4.3) — 2026-02-18
 
 ### Changes
