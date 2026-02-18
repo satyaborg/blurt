@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.4.3](https://github.com/satyaborg/blurt/releases/tag/v0.4.3) — 2026-02-18
+
+### Changes
+
+- update documentation ([9a635e3](https://github.com/satyaborg/blurt/commit/9a635e39c9d7b546f365299971ed54e1bf0d965e))
 ## [0.4.2](https://github.com/satyaborg/blurt/releases/tag/v0.4.2) — 2026-02-18
 
 ### Changes
 
 - update README.md, AGENTS.md ([0889f9d](https://github.com/satyaborg/blurt/commit/0889f9da6739db5ec3be6e3aeae085a2c9db6219))
+
+### Other
+
+- changelog v0.4.2 ([4b89f5c](https://github.com/satyaborg/blurt/commit/4b89f5c47258d6e3ecdd51cd5b140f2672e5eee0))
 ## [0.4.1](https://github.com/satyaborg/blurt/releases/tag/v0.4.1) — 2026-02-18
 
 ### Features
