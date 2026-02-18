@@ -11,6 +11,7 @@ License: MIT
 """
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -35,7 +36,7 @@ from importlib.metadata import version as _v
 __version__ = _v("blurt")
 
 # --- Themes ---
-THEMES = ["ocean", "vapor"]
+THEMES = ["vapor", "vapor"]
 THEME_COLORS = {
     "ocean": {
         "accent": "dodger_blue2",
@@ -172,11 +173,28 @@ def _save_vocab(words):
 
 
 def _vocab_prompt():
-    """Build an initial_prompt string from vocab words for keyword boosting."""
+    """Build an initial_prompt string from vocab words and file names for keyword boosting."""
     words = _load_vocab()
-    if not words:
+    file_names = _file_basenames()
+    combined = words + file_names
+    if not combined:
         return None
-    return ", ".join(words)
+    return ", ".join(combined)
+
+
+def _file_basenames() -> list[str]:
+    """Get unique file basenames from git index for Whisper prompting."""
+    paths = _build_file_index()
+    if not paths:
+        return []
+    seen = set()
+    names = []
+    for p in paths:
+        name = p.rsplit("/", 1)[-1]
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
 
 
 def show_vocab():
@@ -318,6 +336,51 @@ def _is_hallucination(segments):
     return False
 
 
+# --- File reference resolution ---
+
+_file_index: list[str] | None = None
+_file_index_time: float = 0.0
+_FILE_INDEX_TTL = 30  # seconds
+
+
+def _build_file_index() -> list[str]:
+    """Build file index from git ls-files (cached with 30s TTL)."""
+    global _file_index, _file_index_time
+    if _file_index is not None and (time.monotonic() - _file_index_time) < _FILE_INDEX_TTL:
+        return _file_index
+
+    try:
+        result = subprocess.run(["git", "ls-files"], capture_output=True, text=True, timeout=5)
+        _file_index = [p for p in result.stdout.strip().split("\n") if p]
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        _file_index = []
+
+    _file_index_time = time.monotonic()
+    return _file_index
+
+
+def _resolve_file_refs(text: str) -> str:
+    """Replace recognized filenames with @full/path for coding agent compatibility."""
+    paths = _build_file_index()
+    if not paths:
+        return text
+
+    # Build basename -> full path lookup (first match wins)
+    basename_to_path: dict[str, str] = {}
+    for p in paths:
+        name = p.rsplit("/", 1)[-1]
+        if name not in basename_to_path:
+            basename_to_path[name] = p
+
+    result = text
+    for name, full_path in sorted(basename_to_path.items(), key=lambda x: -len(x[0])):
+        # Case-insensitive word-boundary match, replace with @full/path
+        pattern = re.compile(re.escape(name), re.IGNORECASE)
+        result = pattern.sub(f"@{full_path}", result)
+
+    return result
+
+
 def stop_recording():
     global recording, stream, rec_status
     with lock:
@@ -375,6 +438,8 @@ def stop_recording():
 
     if not text or _is_hallucination(segments):
         return
+
+    text = _resolve_file_refs(text)
 
     global total_words
     word_count = len(text.split())

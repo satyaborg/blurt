@@ -36,7 +36,7 @@ First run downloads the Whisper model (~1.6 GB, one-time). macOS will prompt for
 |---|---|
 | Hold right **⌘** | Start recording |
 | Release right **⌘** | Stop, transcribe, paste at cursor |
-| **Esc** | Quit |
+| **Ctrl + C** | Quit |
 
 ## Custom Words
 
