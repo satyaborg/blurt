@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.3.8](https://github.com/satyaborg/blurt/releases/tag/v0.3.8) — 2026-02-18
+
+### Other
+
+- display relative paths ([416405b](https://github.com/satyaborg/blurt/commit/416405b9860c8869122b3c1efaf2daa4ef689ca5))
 ## [0.3.7](https://github.com/satyaborg/blurt/releases/tag/v0.3.7) — 2026-02-17
 
 ### Bug fixes
 
 - fix typo ([df34ba2](https://github.com/satyaborg/blurt/commit/df34ba222f04fa77cedbd2f1b028cc7b4acb02b4))
+
+### Other
+
+- changelog v0.3.7 ([b6eb888](https://github.com/satyaborg/blurt/commit/b6eb888123ea064c05f13c73efd0448453c85f8a))
 ## [0.3.6](https://github.com/satyaborg/blurt/releases/tag/v0.3.6) — 2026-02-17
 
 ### Bug fixes
