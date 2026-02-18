@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.4.1](https://github.com/satyaborg/blurt/releases/tag/v0.4.1) — 2026-02-18
+
+### Features
+
+- add upgrade cmd ([5b7e5ff](https://github.com/satyaborg/blurt/commit/5b7e5ffc845a43d0a08d311f02f6644ad2a0e1d2))
 ## [0.3.9](https://github.com/satyaborg/blurt/releases/tag/v0.3.9) — 2026-02-18
 
 ### Bug fixes
 
 - fix source audio switch ([38d1116](https://github.com/satyaborg/blurt/commit/38d1116ff6784f691e4f54e02f8eeaa7eba0ae5d))
+
+### Other
+
+- changelog v0.3.9 ([8b2ea68](https://github.com/satyaborg/blurt/commit/8b2ea680f7130afeae12734858859feb5a3e7845))
 ## [0.3.8](https://github.com/satyaborg/blurt/releases/tag/v0.3.8) — 2026-02-18
 
 ### Other
