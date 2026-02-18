@@ -179,7 +179,7 @@ def _vocab_prompt():
 def show_vocab():
     """Display current vocabulary as a Rich table."""
     words = _load_vocab()
-    console.print(f"  [{C_DIM}]{VOCAB_PATH}[/{C_DIM}]")
+    console.print(f"  [{C_DIM}]{str(VOCAB_PATH).replace(str(Path.home()), '~')}[/{C_DIM}]")
     if not words:
         console.print(f"  [{C_DIM}]No vocab words yet. Add with: blurt add <word>[/{C_DIM}]")
         return
@@ -523,10 +523,11 @@ def main():
     info.add_column()
     info.add_row("shortcut", shortcut_str)
     info.add_row("model", MODEL.split("/")[-1])
-    info.add_row("log", str(JSONL_PATH))
-    info.add_row("audio", str(AUDIO_DIR))
+    home = str(Path.home())
+    info.add_row("log", str(JSONL_PATH).replace(home, "~"))
+    info.add_row("audio", str(AUDIO_DIR).replace(home, "~"))
     vocab_count = len(_load_vocab())
-    info.add_row("vocab", str(VOCAB_PATH))
+    info.add_row("vocab", str(VOCAB_PATH).replace(home, "~"))
 
     console.print()
     console.print(Panel(logo, border_style=C_BORDER, padding=(1, 3)))
