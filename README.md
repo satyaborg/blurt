@@ -1,5 +1,9 @@
 <p align="center">
-  <h1 align="center">Blurt</h1>
+  <pre align="center">
+░█▀▄░█░░░█░█░█▀▄░▀█▀
+░█▀▄░█░░░█░█░█▀▄░░█░
+░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░
+  </pre>
   <p align="center">Talk to your coding agents.</p>
   <p align="center">
     <a href="https://pypi.org/project/blurt/"><img src="https://img.shields.io/pypi/v/blurt?color=blue" alt="PyPI"></a>
