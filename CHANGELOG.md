@@ -1,11 +1,17 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.3.9](https://github.com/satyaborg/blurt/releases/tag/v0.3.9) — 2026-02-18
+
+### Bug fixes
+
+- fix source audio switch ([38d1116](https://github.com/satyaborg/blurt/commit/38d1116ff6784f691e4f54e02f8eeaa7eba0ae5d))
 ## [0.3.8](https://github.com/satyaborg/blurt/releases/tag/v0.3.8) — 2026-02-18
 
 ### Other
 
 - display relative paths ([416405b](https://github.com/satyaborg/blurt/commit/416405b9860c8869122b3c1efaf2daa4ef689ca5))
+- changelog v0.3.8 ([12a3154](https://github.com/satyaborg/blurt/commit/12a3154c77183f81a9c229482c7086077d70ef44))
 ## [0.3.7](https://github.com/satyaborg/blurt/releases/tag/v0.3.7) — 2026-02-17
 
 ### Bug fixes
