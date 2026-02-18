@@ -18,7 +18,8 @@
   <img src="https://raw.githubusercontent.com/satyaborg/blurt/main/demo.gif" alt="demo" width="600">
 </p>
 
-On-device voice-to-text for macOS. Hold right **⌘**, speak, release - your words go straight into Claude Code, Codex, Cursor, OpenCode or any other agent, wherever your cursor is. Powered by [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), runs entirely on Apple Silicon. No cloud, no API keys, no accounts.
+On-device voice-to-text for macOS. Hold right **⌘**, speak, release - your words go straight into Claude Code, Codex, Cursor, OpenCode or any other agent, wherever your cursor is.
+
 ## Install
 
 ```bash
