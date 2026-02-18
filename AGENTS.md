@@ -4,7 +4,7 @@ This file provides guidance to coding agents (Claude Code, Codex, Cursor etc.) w
 
 ## What is Blurt
 
-On-device speech-to-text for macOS Apple Silicon. Single-file Python app (`blurt.py`) — hold right ⌘, speak, release, text pastes at cursor. Uses MLX Whisper locally, no cloud/API.
+On-device voice-to-text for macOS Apple Silicon. Single-file Python app - hold right ⌘, speak, release, text pastes at cursor. Uses MLX Whisper locally, no cloud/API.
 
 ## Commands
 
@@ -41,10 +41,15 @@ Single package: `blurt/__init__.py` contains everything. No submodules.
 - Hallucination detection (`_is_hallucination`) filters out silence/repetitive outputs using `no_speech_prob`, `avg_logprob`, and `compression_ratio` from Whisper segments
 - Global mutable state (`recording`, `audio_buffer`, `stream`, etc.) protected by `threading.Lock`
 - Versioning via `setuptools-scm` (git tags), no hardcoded version
+- Sound feedback files bundled in `blurt/sounds/*.mp3`
+
+## CLI Subcommands
+
+`blurt` (run), `blurt add <phrase>`, `blurt rm <phrase>`, `blurt vocab` (list words), `blurt log` (view transcripts), `blurt upgrade` (self-update via pipx).
 
 ## Vocab
 
-`~/.blurt/vocab.txt` — one word/phrase per line. Joined into `initial_prompt` for `mlx_whisper.transcribe()` to bias recognition. CLI: `blurt add <phrase>`, `blurt rm <phrase>`, `blurt vocab` (list).
+`~/.blurt/vocab.txt` - one word/phrase per line. Joined into `initial_prompt` for `mlx_whisper.transcribe()` to bias recognition.
 
 ## Conventions
 

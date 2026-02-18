@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "blurt"
 dynamic = ["version"]
-description = "Talk, don't type. Runs on-device on macOS Apple Silicon. No cloud, no API keys and forever free."
+description = "Talk to your coding agents. On-device voice-to-text for macOS Apple Silicon. No cloud, no API keys."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Blurt — Talk, don't type.
+Blurt - Talk to your coding agents.
 
-On-device speech-to-text for macOS Apple Silicon.
-Hold a shortcut, speak, release — text appears at your cursor.
+On-device voice-to-text for macOS Apple Silicon.
+Hold a shortcut, speak, release - text appears at your cursor.
 Powered by MLX Whisper. No cloud, no API keys.
 
 Homepage: https://github.com/satyaborg/blurt
@@ -296,7 +296,7 @@ def start_recording():
                     lock.acquire()
                 else:
                     recording = False
-                    msg = "Audio device unavailable — replug or switch input and try again"
+                    msg = "Audio device unavailable - replug or switch input and try again"
                     console.print(f"  [{C_REC}]{msg}[/{C_REC}]")
                     return
         _play_sound("on")
@@ -342,7 +342,7 @@ def stop_recording():
     if duration_s < 0.5:
         return
 
-    # Skip silence — prevents vocab hallucinations from initial_prompt
+    # Skip silence - prevents vocab hallucinations from initial_prompt
     rms = np.sqrt(np.mean(audio_data**2))
     if rms < 0.003:
         return
@@ -468,7 +468,7 @@ def cmd_upgrade():
         data = json.loads(resp.read())
         latest = data["info"]["version"]
     except (URLError, OSError, json.JSONDecodeError, KeyError):
-        console.print("  [red]couldn't check for updates — try manually:[/red]")
+        console.print("  [red]couldn't check for updates - try manually:[/red]")
         console.print(f"  [{C_DIM}]pipx upgrade blurt[/{C_DIM}]\n")
         sys.exit(1)
 
@@ -494,7 +494,7 @@ def cmd_upgrade():
 
 def show_help():
     """Print CLI usage."""
-    console.print(f"\n  [bold {C_ACCENT}]blurt[/bold {C_ACCENT}] — on-device speech-to-text for macOS\n")
+    console.print(f"\n  [bold {C_ACCENT}]blurt[/bold {C_ACCENT}] - on-device voice-to-text for macOS\n")
     console.print("  [bold]Usage:[/bold]")
     console.print("    blurt                      start listening (hold shortcut to record)")
     console.print("    blurt add <word/phrase>     add word to vocab for better recognition")

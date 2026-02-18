@@ -1,72 +1,86 @@
-# Blurt
+<p align="center">
+  <h1 align="center">Blurt</h1>
+  <p align="center">Talk to your coding agents.</p>
+  <p align="center">
+    <a href="https://pypi.org/project/blurt/"><img src="https://img.shields.io/pypi/v/blurt?color=blue" alt="PyPI"></a>
+    <a href="https://pepy.tech/project/blurt"><img src="https://img.shields.io/pepy/dt/blurt?color=green" alt="Downloads"></a>
+    <a href="https://github.com/satyaborg/blurt/blob/main/LICENSE"><img src="https://img.shields.io/github/license/satyaborg/blurt" alt="License"></a>
+    <a href="https://github.com/satyaborg/blurt"><img src="https://img.shields.io/github/stars/satyaborg/blurt?style=flat" alt="Stars"></a>
+    <a href="https://pypi.org/project/blurt/"><img src="https://img.shields.io/pypi/pyversions/blurt" alt="Python"></a>
+  </p>
+</p>
 
-Talk, don't type.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/satyaborg/blurt/main/demo.gif" alt="demo" width="600">
+</p>
 
-![demo](https://raw.githubusercontent.com/satyaborg/blurt/main/demo.gif)
-
-Hold the right cmd ⌘, speak and release - text appears wherever your cursor is. Runs on-device on macOS Apple Silicon.
-
-## Requirements
-
-- macOS with Apple Silicon (M1/M2/M3/M4)
-- Python 3.10+
-
+On-device voice-to-text for macOS. Hold right **⌘**, speak, release - your words go straight into Claude Code, Codex, Cursor, OpenCode or any other agent, wherever your cursor is. Powered by [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), runs entirely on Apple Silicon. No cloud, no API keys, no accounts.
 ## Install
 
 ```bash
 pipx install blurt
 ```
 
-Requires [pipx](https://pipx.pypa.io/) (`brew install pipx`).
+> Requires [pipx](https://pipx.pypa.io/) (`brew install pipx`) and macOS with Apple Silicon.
 
-Update to latest: `pipx upgrade blurt`
+First run downloads the Whisper model (~1.6 GB, one-time). macOS will prompt for **Microphone** and **Accessibility** access (System Settings → Privacy & Security).
 
-First run downloads the STT model (~1.6 GB). One time only.
+## Usage
 
-macOS will prompt you to grant your terminal:
-- **Microphone** access
-- **Accessibility** access (System Settings → Privacy & Security)
+| Action | Description |
+|---|---|
+| Hold right **⌘** | Start recording |
+| Release right **⌘** | Stop, transcribe, paste at cursor |
+| **Esc** | Quit |
 
-## Vocab
+## Custom Words
 
-Add words it often gets wrong (names, jargon, acronyms):
+Teach Blurt words it gets wrong (names, jargon, acronyms):
 
 ```bash
-blurt add "Claude Code"   # add
-blurt vocab               # list
+blurt add "Claude Code"   # add a word
+blurt vocab               # list all
 blurt rm "Claude Code"    # remove
 ```
 
-Or edit manually in `~/.blurt/vocab.txt`.
+Words are stored in `~/.blurt/vocab.txt` (one per line).
 
-## History
-
-Access your transcripts via:
+## Transcript History
 
 ```bash
-blurt log
+blurt log                 # view recent transcripts
 ```
 
-Or view the log file manually:
+Logs are stored in `~/.blurt/log.txt`.
+
+## Update
 
 ```bash
-cat ~/.blurt/log.txt
+blurt upgrade
 ```
+
+## Troubleshooting
+
+| Issue | Fix |
+|---|---|
+| "Microphone access" prompt doesn't appear | System Settings → Privacy & Security → Microphone → enable your terminal |
+| "Accessibility" error | System Settings → Privacy & Security → Accessibility → enable your terminal |
+| No audio / recording fails | `brew install portaudio` then restart your terminal |
+| Model download stalls | Check disk space (~1.6 GB needed in `~/.cache/huggingface/`) |
 
 ## Contributing
 
 ```bash
 git clone https://github.com/satyaborg/blurt.git
 cd blurt
-pipx install . --force
+uv pip install -e ".[dev]"
+pytest
 ```
-
-This installs the local version of blurt. After making changes, re-run `pipx install . --force` to test them.
 
 ## Privacy
 
-Your audio never leaves your Mac. Everything including recording, transcription and inference runs locally. No network calls, no telemetry, no accounts, and no API keys needed.
+Everything runs on your Mac. No network calls, no telemetry, no data collection. Audio files are saved locally to `~/.blurt/audio/` and never leave your device.
 
 ## License
 
-MIT
+[MIT](LICENSE)
