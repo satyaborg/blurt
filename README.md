@@ -21,7 +21,7 @@ Requires [pipx](https://pipx.pypa.io/) (`brew install pipx`).
 
 Update to latest: `pipx upgrade blurt`
 
-First run downloads the Whisper model (~1.6 GB).
+First run downloads the STT model (~1.6 GB). One time only.
 
 macOS will prompt you to grant your terminal:
 - **Microphone** access
@@ -29,15 +29,29 @@ macOS will prompt you to grant your terminal:
 
 ## Vocab
 
-Add words STT models often get wrong (names, jargon, acronyms):
+Add words it often gets wrong (names, jargon, acronyms):
 
 ```bash
-blurt vocab add Claude Code   # add
-blurt vocab                   # list
-blurt vocab rm Claude Code    # remove
+blurt add "Claude Code"   # add
+blurt vocab               # list
+blurt rm "Claude Code"    # remove
 ```
 
 Or edit manually in `~/.blurt/vocab.txt`.
+
+## History
+
+Access your transcripts via:
+
+```bash
+blurt log
+```
+
+Or view the log file manually:
+
+```bash
+cat ~/.blurt/log.txt
+```
 
 ## Contributing
 

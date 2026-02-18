@@ -31,7 +31,7 @@ Requires `portaudio` system dep (`brew install portaudio`).
 
 ## Architecture
 
-Single module: `blurt.py` contains everything. No packages, no submodules.
+Single package: `blurt/__init__.py` contains everything. No submodules.
 
 **Flow:** `main()` → starts pynput keyboard listener → `on_press`/`on_release` detect shortcut hold → `start_recording()` opens sounddevice stream → `stop_recording()` concatenates audio buffer, saves WAV to `~/.blurt/audio/`, transcribes via `mlx_whisper.transcribe()`, pastes via pbcopy+osascript, logs to `~/.blurt/blurts.jsonl`.
 
@@ -49,5 +49,5 @@ Single module: `blurt.py` contains everything. No packages, no submodules.
 ## Conventions
 
 - Line length: 120 (ruff)
-- Ruff rules: E, F, I (with E402 ignored in blurt.py for delayed imports)
+- Ruff rules: E, F, I (with E402 ignored in `blurt/__init__.py` for delayed imports)
 - Tests use `monkeypatch` to swap module-level paths (`JSONL_PATH`, etc.) with `tmp_path`
