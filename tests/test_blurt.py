@@ -182,6 +182,8 @@ def test_save_vocab_empty(tmp_path, monkeypatch):
 
 def test_vocab_prompt_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(blurt, "VOCAB_PATH", tmp_path / "missing.txt")
+    monkeypatch.setattr(blurt, "_file_index", [])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
     assert blurt._vocab_prompt() is None
 
 
@@ -189,6 +191,8 @@ def test_vocab_prompt_with_words(tmp_path, monkeypatch):
     vocab = tmp_path / "vocab.txt"
     vocab.write_text("Blurt\nMLX\n")
     monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    monkeypatch.setattr(blurt, "_file_index", [])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
     assert blurt._vocab_prompt() == "Blurt, MLX"
 
 
@@ -255,3 +259,91 @@ def test_vocab_cli_rm(tmp_path, monkeypatch, capsys):
     with patch.object(sys, "argv", ["blurt", "rm", "MLX", "Whisper"]):
         blurt.main()
     assert blurt._load_vocab() == []
+
+
+# --- File reference injection into initial_prompt ---
+
+
+def test_file_basenames_returns_unique_names(monkeypatch):
+    monkeypatch.setattr(blurt, "_file_index", ["blurt/__init__.py", "tests/test_blurt.py", "README.md"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    result = blurt._file_basenames()
+    assert result == ["__init__.py", "test_blurt.py", "README.md"]
+
+
+def test_file_basenames_empty_index(monkeypatch):
+    monkeypatch.setattr(blurt, "_file_index", [])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    assert blurt._file_basenames() == []
+
+
+def test_vocab_prompt_includes_file_basenames(tmp_path, monkeypatch):
+    vocab = tmp_path / "vocab.txt"
+    vocab.write_text("MLX\n")
+    monkeypatch.setattr(blurt, "VOCAB_PATH", vocab)
+    monkeypatch.setattr(blurt, "_file_index", ["cliff.toml", "blurt/__init__.py"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    prompt = blurt._vocab_prompt()
+    assert "MLX" in prompt
+    assert "cliff.toml" in prompt
+    assert "__init__.py" in prompt
+
+
+def test_vocab_prompt_file_only_no_vocab(tmp_path, monkeypatch):
+    monkeypatch.setattr(blurt, "VOCAB_PATH", tmp_path / "missing.txt")
+    monkeypatch.setattr(blurt, "_file_index", ["README.md"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    prompt = blurt._vocab_prompt()
+    assert prompt == "README.md"
+
+
+def test_vocab_prompt_no_vocab_no_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(blurt, "VOCAB_PATH", tmp_path / "missing.txt")
+    monkeypatch.setattr(blurt, "_file_index", [])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    assert blurt._vocab_prompt() is None
+
+
+# --- File reference resolution ---
+
+
+def test_resolve_replaces_basename_with_full_path(monkeypatch):
+    monkeypatch.setattr(blurt, "_file_index", ["blurt/__init__.py", "tests/test_blurt.py", "cliff.toml"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    result = blurt._resolve_file_refs("check cliff.toml for the config")
+    assert "@cliff.toml" in result
+
+
+def test_resolve_uses_full_path_for_nested_files(monkeypatch):
+    monkeypatch.setattr(blurt, "_file_index", ["blurt/__init__.py", "tests/test_blurt.py"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    result = blurt._resolve_file_refs("look at __init__.py")
+    assert "@blurt/__init__.py" in result
+
+
+def test_resolve_case_insensitive(monkeypatch):
+    monkeypatch.setattr(blurt, "_file_index", ["README.md"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    result = blurt._resolve_file_refs("check readme.md please")
+    assert "@README.md" in result
+
+
+def test_resolve_no_match_passthrough(monkeypatch):
+    monkeypatch.setattr(blurt, "_file_index", ["blurt/__init__.py"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    original = "just some normal text"
+    assert blurt._resolve_file_refs(original) == original
+
+
+def test_resolve_empty_index(monkeypatch):
+    monkeypatch.setattr(blurt, "_file_index", [])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    original = "check cliff.toml"
+    assert blurt._resolve_file_refs(original) == original
+
+
+def test_resolve_preserves_surrounding_text(monkeypatch):
+    monkeypatch.setattr(blurt, "_file_index", ["CLAUDE.md"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    result = blurt._resolve_file_refs("what about CLAUDE.md and the config")
+    assert result == "what about @CLAUDE.md and the config"
