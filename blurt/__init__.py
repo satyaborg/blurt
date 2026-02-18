@@ -273,13 +273,28 @@ def start_recording():
             return
         recording = True
         audio_buffer = []
-        stream = sd.InputStream(
-            samplerate=SAMPLE_RATE,
-            channels=CHANNELS,
-            dtype="float32",
-            callback=audio_callback,
-        )
-        stream.start()
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                stream = sd.InputStream(
+                    samplerate=SAMPLE_RATE,
+                    channels=CHANNELS,
+                    dtype="float32",
+                    callback=audio_callback,
+                )
+                stream.start()
+                break
+            except sd.PortAudioError:
+                stream = None
+                if attempt < max_retries - 1:
+                    console.print(f"  [{C_REC}]Reconnecting audio... ({attempt + 1}/{max_retries})[/{C_REC}]")
+                    lock.release()
+                    time.sleep(1)
+                    lock.acquire()
+                else:
+                    recording = False
+                    console.print(f"  [{C_REC}]Audio device unavailable — replug or switch input and try again[/{C_REC}]")
+                    return
         _play_sound("on")
         rec_status = console.status(f"  [{C_REC}]Listening...[/{C_REC}]")
         rec_status.start()
