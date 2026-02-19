@@ -359,26 +359,42 @@ def _build_file_index() -> list[str]:
     return _file_index
 
 
+def _normalize_filename(name: str) -> str:
+    """Strip leading/trailing underscores from filename stem for fuzzy matching.
+
+    Whisper often drops underscores, so __init__.py gets transcribed as init.py.
+    """
+    stem, _, ext = name.rpartition(".")
+    if not stem:
+        return name
+    return stem.strip("_") + "." + ext
+
+
 def _resolve_file_refs(text: str) -> str:
     """Replace recognized filenames with @full/path for coding agent compatibility."""
     paths = _build_file_index()
     if not paths:
         return text
 
-    # Build basename -> full path lookup (first match wins)
-    basename_to_path: dict[str, str] = {}
+    # Build lookup: collect (pattern_text, full_path) for both original and normalized names
+    # Longest patterns first so longer matches take priority
+    variants: list[tuple[str, str]] = []
+    seen_patterns: set[str] = set()
     for p in paths:
         name = p.rsplit("/", 1)[-1]
-        if name not in basename_to_path:
-            basename_to_path[name] = p
+        for variant in {name, _normalize_filename(name)}:
+            if variant not in seen_patterns:
+                seen_patterns.add(variant)
+                variants.append((variant, p))
 
     result = text
-    for name, full_path in sorted(basename_to_path.items(), key=lambda x: -len(x[0])):
-        # Case-insensitive word-boundary match, replace with @full/path
-        pattern = re.compile(re.escape(name), re.IGNORECASE)
-        result = pattern.sub(f"@{full_path}", result)
+    for match_name, full_path in sorted(variants, key=lambda x: -len(x[0])):
+        pattern = re.compile(re.escape(match_name), re.IGNORECASE)
+        result = pattern.sub(f"@{full_path} ", result)
 
-    return result
+    # Collapse any double spaces introduced by trailing space in replacement
+    result = re.sub(r"  +", " ", result)
+    return result.strip()
 
 
 def stop_recording():
