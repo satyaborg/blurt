@@ -599,7 +599,7 @@ def show_help():
     console.print("    blurt rm <word/phrase>      remove word from vocab")
     console.print("    blurt vocab                 list vocab words")
     console.print("    blurt log [-n N]            show recent transcriptions (default 20)")
-    console.print("    blurt upgrade               check for updates and upgrade")
+    console.print("    blurt upgrade|update        check for updates and upgrade")
     console.print("    blurt help                  show this help")
     console.print("    blurt --version             show version")
     console.print()
@@ -635,7 +635,7 @@ def main():
         rm_vocab(" ".join(sys.argv[2:]))
         return
 
-    if len(sys.argv) >= 2 and sys.argv[1] == "upgrade":
+    if len(sys.argv) >= 2 and sys.argv[1] in ("upgrade", "update"):
         cmd_upgrade()
         return
 
