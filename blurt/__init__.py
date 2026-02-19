@@ -541,6 +541,23 @@ def on_release(key):
         threading.Thread(target=stop_recording, daemon=True).start()
 
 
+def _check_update_bg():
+    """Background update check — prints a notice if a newer version exists."""
+    try:
+        resp = urlopen("https://pypi.org/pypi/blurt/json", timeout=5)
+        data = json.loads(resp.read())
+        latest = data["info"]["version"]
+        from packaging.version import Version
+
+        if Version(latest) > Version(__version__):
+            console.print(
+                f"\n  [bold {C_ACCENT}]update available:[/bold {C_ACCENT}] "
+                f"v{__version__} → v{latest}  [{C_DIM}]run `blurt upgrade`[/{C_DIM}]"
+            )
+    except Exception:
+        pass
+
+
 def cmd_upgrade():
     """Check PyPI for a newer version and upgrade if available."""
     console.print(f"\n  [{C_DIM}]checking for updates...[/{C_DIM}]")
@@ -679,6 +696,9 @@ def main():
         console.print(f"\n  [{C_ACCENT}]stats[/{C_ACCENT}]  " + " \u2022 ".join(parts))
 
     console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 hold shortcut to record[/{C_DIM}]\n")
+
+    # Check for updates in background
+    threading.Thread(target=_check_update_bg, daemon=True).start()
 
     # Pre-load model in background
     threading.Thread(target=load_model, daemon=True).start()
