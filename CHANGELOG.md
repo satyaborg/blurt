@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.5.1](https://github.com/satyaborg/blurt/releases/tag/v0.5.1) — 2026-02-19
+
+### Bug fixes
+
+- fix relative @file path and trailing whitespace ([2a96287](https://github.com/satyaborg/blurt/commit/2a962871e86b9b7f7d6798076237f63bc13d1b40))
 ## [0.5.0](https://github.com/satyaborg/blurt/releases/tag/v0.5.0) — 2026-02-18
 
 ### Features
 
 - add auto filepath resolution ([946751f](https://github.com/satyaborg/blurt/commit/946751f193bc32cbc9b9e9cc8bcc821fe86ddcea))
+
+### Other
+
+- changelog v0.5.0 ([6a56113](https://github.com/satyaborg/blurt/commit/6a56113a0142a91e3c800970f4c8c5d673cdd436))
 ## [0.4.4](https://github.com/satyaborg/blurt/releases/tag/v0.4.4) — 2026-02-18
 
 ### Changes
