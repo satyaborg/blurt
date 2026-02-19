@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.5.3](https://github.com/satyaborg/blurt/releases/tag/v0.5.3) — 2026-02-19
+
+### Features
+
+- add update alias ([ce4a569](https://github.com/satyaborg/blurt/commit/ce4a5690119ee86ae446599db2504dce2668e018))
 ## [0.5.2](https://github.com/satyaborg/blurt/releases/tag/v0.5.2) — 2026-02-19
 
 ### Features
 
 - add auto update check ([21c61e3](https://github.com/satyaborg/blurt/commit/21c61e3bf8e97720909e5981f9f50a94c38e7732))
+
+### Other
+
+- changelog v0.5.2 ([175fa4e](https://github.com/satyaborg/blurt/commit/175fa4e6cf554275d727dbd1aebf474a79c1a2cc))
 ## [0.5.1](https://github.com/satyaborg/blurt/releases/tag/v0.5.1) — 2026-02-19
 
 ### Bug fixes
