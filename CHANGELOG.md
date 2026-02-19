@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.5.2](https://github.com/satyaborg/blurt/releases/tag/v0.5.2) — 2026-02-19
+
+### Features
+
+- add auto update check ([21c61e3](https://github.com/satyaborg/blurt/commit/21c61e3bf8e97720909e5981f9f50a94c38e7732))
 ## [0.5.1](https://github.com/satyaborg/blurt/releases/tag/v0.5.1) — 2026-02-19
 
 ### Bug fixes
 
 - fix relative @file path and trailing whitespace ([2a96287](https://github.com/satyaborg/blurt/commit/2a962871e86b9b7f7d6798076237f63bc13d1b40))
+
+### Other
+
+- changelog v0.5.1 ([4be90e4](https://github.com/satyaborg/blurt/commit/4be90e4350c83d6903eee4bc318dc1436f61ef8e))
 ## [0.5.0](https://github.com/satyaborg/blurt/releases/tag/v0.5.0) — 2026-02-18
 
 ### Features
