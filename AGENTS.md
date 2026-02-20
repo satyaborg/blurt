@@ -56,3 +56,9 @@ Single package: `blurt/__init__.py` contains everything. No submodules.
 - Line length: 120 (ruff)
 - Ruff rules: E, F, I (with E402 ignored in `blurt/__init__.py` for delayed imports)
 - Tests use `monkeypatch` to swap module-level paths (`JSONL_PATH`, etc.) with `tmp_path`
+- File index tests mock `_file_index` and `_file_index_time` directly to avoid `git ls-files` subprocess calls
+- No integration tests requiring audio hardware or Whisper model
+
+## @-mentions
+
+When run from a git repo, Blurt indexes files via `git ls-files` and auto-resolves spoken filenames to `@path/to/file` in transcription output. File index cached with 30s TTL. `_resolve_file_refs()` does case-insensitive matching and handles normalized filenames (e.g., Whisper transcribing `__init__.py` as `init.py`).

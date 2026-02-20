@@ -695,6 +695,12 @@ def main():
             parts.append(f"{vocab_count} vocab")
         console.print(f"\n  [{C_ACCENT}]stats[/{C_ACCENT}]  " + " \u2022 ".join(parts))
 
+    file_count = len(_build_file_index())
+    if file_count > 0:
+        console.print(f"\n  [{C_DIM}]{file_count} files indexed — spoken filenames auto-resolve to @-mentions[/{C_DIM}]")
+    else:
+        console.print(f"\n  [{C_DIM}]no git repo — run from a project directory to enable @-mentions[/{C_DIM}]")
+
     console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 hold shortcut to record[/{C_DIM}]\n")
 
     # Check for updates in background

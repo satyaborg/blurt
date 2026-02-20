@@ -9,8 +9,6 @@
     <a href="https://pypi.org/project/blurt/"><img src="https://img.shields.io/pypi/v/blurt?color=blue" alt="PyPI"></a>
     <a href="https://pepy.tech/project/blurt"><img src="https://img.shields.io/pepy/dt/blurt?color=green" alt="Downloads"></a>
     <a href="https://github.com/satyaborg/blurt/blob/main/LICENSE"><img src="https://img.shields.io/github/license/satyaborg/blurt" alt="License"></a>
-    <a href="https://github.com/satyaborg/blurt"><img src="https://img.shields.io/github/stars/satyaborg/blurt?style=flat" alt="Stars"></a>
-    <a href="https://pypi.org/project/blurt/"><img src="https://img.shields.io/pypi/pyversions/blurt" alt="Python"></a>
   </p>
 </p>
 
@@ -49,6 +47,10 @@ blurt rm "Claude Code"    # remove
 ```
 
 Words are stored in `~/.blurt/vocab.txt` (one per line).
+
+## @-mentions
+
+Run Blurt from a git repo and spoken filenames automatically resolve to `@path/to/file` references that coding agents understand. For example, saying _"check init.py for the bug"_ becomes `check @blurt/__init__.py for the bug`.
 
 ## Transcript History
 
