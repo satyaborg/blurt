@@ -697,7 +697,8 @@ def main():
 
     file_count = len(_build_file_index())
     if file_count > 0:
-        console.print(f"\n  [{C_DIM}]{file_count} files indexed — spoken filenames auto-resolve to @-mentions[/{C_DIM}]")
+        msg = f"{file_count} files indexed — spoken filenames auto-resolve to @-mentions"
+        console.print(f"\n  [{C_DIM}]{msg}[/{C_DIM}]")
     else:
         console.print(f"\n  [{C_DIM}]no git repo — run from a project directory to enable @-mentions[/{C_DIM}]")
 
