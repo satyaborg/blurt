@@ -1,11 +1,17 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.5.5](https://github.com/satyaborg/blurt/releases/tag/v0.5.5) — 2026-02-20
+
+### Features
+
+- add precommit hook ([1fac32b](https://github.com/satyaborg/blurt/commit/1fac32b5865ea9cd6b919ac40857fae0a6d36c85))
 ## [0.5.4](https://github.com/satyaborg/blurt/releases/tag/v0.5.4) — 2026-02-20
 
 ### Other
 
 - improve docs on file indexing ([0735196](https://github.com/satyaborg/blurt/commit/07351965006faa3c69cc9098ba3d2316fda6e6ed))
+- changelog v0.5.4 ([d43a1b3](https://github.com/satyaborg/blurt/commit/d43a1b32c1a9fd873363fdb90c18939f7bab9211))
 ## [0.5.3](https://github.com/satyaborg/blurt/releases/tag/v0.5.3) — 2026-02-19
 
 ### Features
