@@ -93,6 +93,7 @@ model_lock = threading.Lock()
 whisper_pipe = None
 rec_status = None
 total_words = 0
+_sound_cache: dict[str, tuple[np.ndarray, int]] = {}  # name -> (samples, sample_rate)
 
 
 def show_log(n=20):
@@ -261,7 +262,14 @@ def load_model():
                     import mlx_whisper
 
                     dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
-                    mlx_whisper.transcribe(dummy, path_or_hf_repo=MODEL, language="en")
+                    mlx_whisper.transcribe(
+                        dummy,
+                        path_or_hf_repo=MODEL,
+                        language="en",
+                        condition_on_previous_text=False,
+                        temperature=0.0,
+                        without_timestamps=True,
+                    )
                     whisper_pipe = mlx_whisper
                 huggingface_hub.utils.enable_progress_bars()
             else:
@@ -269,13 +277,59 @@ def load_model():
                 import mlx_whisper
 
                 dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
-                mlx_whisper.transcribe(dummy, path_or_hf_repo=MODEL, language="en")
+                mlx_whisper.transcribe(
+                    dummy,
+                    path_or_hf_repo=MODEL,
+                    language="en",
+                    condition_on_previous_text=False,
+                    temperature=0.0,
+                    without_timestamps=True,
+                )
                 whisper_pipe = mlx_whisper
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
 
 
+def _preload_sounds():
+    """Pre-load sound files as numpy arrays for instant playback (no new deps)."""
+    global _sound_cache
+    import tempfile
+
+    for name in ("on", "off"):
+        path = SOUNDS_DIR / f"{name}.mp3"
+        if not path.exists():
+            continue
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
+            subprocess.run(
+                ["afconvert", "-f", "WAVE", "-d", "LEI16", str(path), tmp_path],
+                capture_output=True,
+                check=True,
+            )
+            with wave.open(tmp_path, "r") as wf:
+                sr = wf.getframerate()
+                frames = wf.readframes(wf.getnframes())
+                samples = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+                _sound_cache[name] = (samples, sr)
+        except Exception:
+            pass
+        finally:
+            if tmp_path:
+                Path(tmp_path).unlink(missing_ok=True)
+
+
 def _play_sound(name):
-    """Play a sound file asynchronously (non-blocking)."""
+    """Play a pre-loaded sound via sounddevice (no subprocess fork)."""
+    entry = _sound_cache.get(name)
+    if entry is not None:
+        samples, sr = entry
+        try:
+            sd.play(samples, samplerate=sr, device=sd.default.device[1])
+        except Exception:
+            pass
+        return
+    # Fallback if sounds weren't pre-loaded
     path = SOUNDS_DIR / f"{name}.mp3"
     if path.exists():
         subprocess.Popen(["afplay", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -317,7 +371,6 @@ def start_recording():
                     msg = "Audio device unavailable - replug or switch input and try again"
                     console.print(f"  [{C_REC}]{msg}[/{C_REC}]")
                     return
-        _play_sound("on")
         rec_status = console.status(f"  [{C_REC}]Listening...[/{C_REC}]")
         rec_status.start()
 
@@ -532,6 +585,7 @@ def on_press(key):
     pressed_keys.add(_normalize(key))
     if SHORTCUT.issubset(pressed_keys):
         if not recording:
+            _play_sound("on")
             threading.Thread(target=start_recording, daemon=True).start()
 
 
@@ -542,18 +596,34 @@ def on_release(key):
 
 
 def _check_update_bg():
-    """Background update check — prints a notice if a newer version exists."""
+    """Background update check — auto-upgrades if a newer version exists."""
     try:
+        # Skip auto-upgrade for dev/editable installs
+        if ".dev" in __version__ or "+" in __version__:
+            return
+
         resp = urlopen("https://pypi.org/pypi/blurt/json", timeout=5)
         data = json.loads(resp.read())
         latest = data["info"]["version"]
         from packaging.version import Version
 
-        if Version(latest) > Version(__version__):
+        if Version(latest) <= Version(__version__):
+            return
+
+        console.print(f"\n  [bold {C_ACCENT}]updating:[/bold {C_ACCENT}] v{__version__} → v{latest}...")
+
+        if shutil.which("pipx"):
+            cmd = ["pipx", "upgrade", "blurt"]
+        else:
+            cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "blurt"]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
             console.print(
-                f"\n  [bold {C_ACCENT}]update available:[/bold {C_ACCENT}] "
-                f"v{__version__} → v{latest}  [{C_DIM}]run `blurt upgrade`[/{C_DIM}]"
+                f"  [bold {C_ACCENT}]updated to v{latest}[/bold {C_ACCENT}] — restart blurt to use the new version"
             )
+        else:
+            console.print(f"  [{C_DIM}]auto-update failed — run `blurt upgrade` manually[/{C_DIM}]")
     except Exception:
         pass
 
@@ -703,6 +773,9 @@ def main():
         console.print(f"\n  [{C_DIM}]no git repo — run from a project directory to enable @-mentions[/{C_DIM}]")
 
     console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 hold shortcut to record[/{C_DIM}]\n")
+
+    # Pre-load sounds into memory for instant playback
+    _preload_sounds()
 
     # Check for updates in background
     threading.Thread(target=_check_update_bg, daemon=True).start()
