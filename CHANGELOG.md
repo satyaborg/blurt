@@ -1,6 +1,17 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.6.2](https://github.com/satyaborg/blurt/releases/tag/v0.6.2) — 2026-03-03
+
+### Bug fixes
+
+- Fix duplicate PyPI publish failures with skip-existing ([c052c8a](https://github.com/satyaborg/blurt/commit/c052c8ad9409840e289e2c26bef171be39edc16c))
+## [0.6.1](https://github.com/satyaborg/blurt/releases/tag/v0.6.1) — 2026-03-03
+
+### Other
+
+- Speed up sound feedback and fix model pre-warm kwargs ([bd79a9b](https://github.com/satyaborg/blurt/commit/bd79a9b55ecbd58f776d43019c9b4cecd8b7fa10))
+- changelog v0.6.1 ([dea7201](https://github.com/satyaborg/blurt/commit/dea7201256f1bfb5c45b60e38e82e9c3fb3fd0fb))
 ## [0.5.5](https://github.com/satyaborg/blurt/releases/tag/v0.5.5) — 2026-02-20
 
 ### Features
