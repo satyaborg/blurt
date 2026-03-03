@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - add precommit hook ([1fac32b](https://github.com/satyaborg/blurt/commit/1fac32b5865ea9cd6b919ac40857fae0a6d36c85))
+
+### Other
+
+- changelog v0.5.5 ([6d81f77](https://github.com/satyaborg/blurt/commit/6d81f77f7f2dc2877be1c681142e777e443c8cb0))
 ## [0.5.4](https://github.com/satyaborg/blurt/releases/tag/v0.5.4) — 2026-02-20
 
 ### Other
