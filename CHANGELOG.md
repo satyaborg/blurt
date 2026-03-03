@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.6.0](https://github.com/satyaborg/blurt/releases/tag/v0.6.0) — 2026-03-03
+
+### Other
+
+- Speed up sound feedback and fix model pre-warm kwargs ([bd79a9b](https://github.com/satyaborg/blurt/commit/bd79a9b55ecbd58f776d43019c9b4cecd8b7fa10))
 ## [0.5.5](https://github.com/satyaborg/blurt/releases/tag/v0.5.5) — 2026-02-20
 
 ### Features
 
 - add precommit hook ([1fac32b](https://github.com/satyaborg/blurt/commit/1fac32b5865ea9cd6b919ac40857fae0a6d36c85))
+
+### Other
+
+- changelog v0.5.5 ([6d81f77](https://github.com/satyaborg/blurt/commit/6d81f77f7f2dc2877be1c681142e777e443c8cb0))
 ## [0.5.4](https://github.com/satyaborg/blurt/releases/tag/v0.5.4) — 2026-02-20
 
 ### Other
