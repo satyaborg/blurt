@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 ### Other
 
 - Improve reliability on macOS Tahoe while keeping backward compat ([aa8982d](https://github.com/satyaborg/blurt/commit/aa8982d07ba26c6dd8b43b1b6fe13a0b808af2e6))
+- changelog v0.6.4 ([855f9a7](https://github.com/satyaborg/blurt/commit/855f9a70039a943b21bf39b83c5eafd55cf78bc5))
 ## [0.6.2](https://github.com/satyaborg/blurt/releases/tag/v0.6.2) — 2026-03-03
 
 ### Bug fixes
