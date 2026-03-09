@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 ### Bug fixes
 
 - Fix doctor portaudio check for DeviceList type ([7d5152b](https://github.com/satyaborg/blurt/commit/7d5152b436becff04b69272b2ff3ebb0a18b9354))
+
+### Other
+
+- changelog v0.7.2 ([e3f384f](https://github.com/satyaborg/blurt/commit/e3f384f481d7243192a60650831471351e574bc6))
 ## [0.7.1](https://github.com/satyaborg/blurt/releases/tag/v0.7.1) — 2026-03-09
 
 ### Changes
