@@ -1,6 +1,15 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.4](https://github.com/satyaborg/blurt/releases/tag/v0.7.4) — 2026-03-09
+
+### Features
+
+- Add periodic model keep-alive to prevent cold starts after idle ([716dc38](https://github.com/satyaborg/blurt/commit/716dc3806593524afc097cff14448ac7445ded2d))
+
+### Other
+
+- changelog v0.7.3 ([ba4bd9c](https://github.com/satyaborg/blurt/commit/ba4bd9c81f944505a3366484724913b4c53726e2))
 ## [0.7.2](https://github.com/satyaborg/blurt/releases/tag/v0.7.2) — 2026-03-09
 
 ### Bug fixes
