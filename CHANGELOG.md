@@ -1,11 +1,28 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.6.4](https://github.com/satyaborg/blurt/releases/tag/v0.6.4) — 2026-03-09
+
+### Changes
+
+- Remove investigation doc from tracked files ([38c54b4](https://github.com/satyaborg/blurt/commit/38c54b4befcb7035870d3e8c73432d05784177cf))
+
+### Features
+
+- Add macOS Tahoe compatibility investigation ([6d86c77](https://github.com/satyaborg/blurt/commit/6d86c77f4c31ae471b1f5a92911708f576b5536e))
+
+### Other
+
+- Improve reliability on macOS Tahoe while keeping backward compat ([aa8982d](https://github.com/satyaborg/blurt/commit/aa8982d07ba26c6dd8b43b1b6fe13a0b808af2e6))
 ## [0.6.2](https://github.com/satyaborg/blurt/releases/tag/v0.6.2) — 2026-03-03
 
 ### Bug fixes
 
 - Fix duplicate PyPI publish failures with skip-existing ([c052c8a](https://github.com/satyaborg/blurt/commit/c052c8ad9409840e289e2c26bef171be39edc16c))
+
+### Other
+
+- changelog v0.6.2 ([39e8050](https://github.com/satyaborg/blurt/commit/39e805009a8408e26e4bbd9eeb936d32232e7ccf))
 ## [0.6.1](https://github.com/satyaborg/blurt/releases/tag/v0.6.1) — 2026-03-03
 
 ### Other
