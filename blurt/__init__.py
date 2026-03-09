@@ -54,7 +54,7 @@ THEME_COLORS = {
     },
 }
 
-THEME = "ocean"
+THEME = "vapor"
 C_ACCENT = C_REC = C_OK = C_DIM = C_BORDER = ""
 
 
