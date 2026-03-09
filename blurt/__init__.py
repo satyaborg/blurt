@@ -36,7 +36,6 @@ from importlib.metadata import version as _v
 __version__ = _v("blurt")
 
 # --- Themes ---
-THEMES = ["vapor", "vapor"]
 THEME_COLORS = {
     "ocean": {
         "accent": "dodger_blue2",
