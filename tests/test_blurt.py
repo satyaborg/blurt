@@ -347,3 +347,90 @@ def test_resolve_preserves_surrounding_text(monkeypatch):
     monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
     result = blurt._resolve_file_refs("what about CLAUDE.md and the config")
     assert result == "what about @CLAUDE.md and the config"
+
+
+# --- paste_transcription ---
+
+
+def test_paste_retries_on_osascript_failure(monkeypatch):
+    """paste_transcription retries once when osascript fails, then succeeds."""
+    calls = []
+
+    def mock_run(cmd, **kwargs):
+        calls.append(cmd)
+
+        class Result:
+            returncode = 0 if len(calls) > 1 else 1
+            stdout = b""
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(blurt.subprocess, "run", mock_run)
+    monkeypatch.setattr(blurt, "_get_clipboard", lambda: b"prev")
+    set_calls = []
+    monkeypatch.setattr(blurt, "_set_clipboard", lambda data: set_calls.append(data))
+    monkeypatch.setattr(blurt.time, "sleep", lambda _: None)
+
+    blurt.paste_transcription("hello")
+    # Should have called osascript twice (first fail, second succeed)
+    osascript_calls = [c for c in calls if c[0] == "osascript"]
+    assert len(osascript_calls) == 2
+
+
+def test_paste_gives_up_after_two_failures(monkeypatch, capsys):
+    """paste_transcription gives up after 2 osascript failures and prints a message."""
+    calls = []
+
+    def mock_run(cmd, **kwargs):
+        calls.append(cmd)
+
+        class Result:
+            returncode = 1
+            stdout = b""
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(blurt.subprocess, "run", mock_run)
+    monkeypatch.setattr(blurt, "_get_clipboard", lambda: b"prev")
+    set_calls = []
+    monkeypatch.setattr(blurt, "_set_clipboard", lambda data: set_calls.append(data))
+    monkeypatch.setattr(blurt.time, "sleep", lambda _: None)
+
+    blurt.paste_transcription("hello")
+    captured = capsys.readouterr()
+    assert "Paste failed" in captured.out
+    # Should NOT restore clipboard on failure (text stays available for manual paste)
+    assert len(set_calls) == 1  # only the initial set, no restore
+
+
+# --- _check_accessibility ---
+
+
+def test_check_accessibility_warns_on_failure(monkeypatch, capsys):
+    """_check_accessibility prints a warning when osascript returns non-zero."""
+
+    class FailResult:
+        returncode = 1
+        stdout = ""
+        stderr = "not allowed"
+
+    monkeypatch.setattr(blurt.subprocess, "run", lambda *a, **kw: FailResult())
+    blurt._check_accessibility()
+    captured = capsys.readouterr()
+    assert "Accessibility permission" in captured.out
+
+
+def test_check_accessibility_silent_on_success(monkeypatch, capsys):
+    """_check_accessibility prints nothing when permissions are granted."""
+
+    class OkResult:
+        returncode = 0
+        stdout = "Finder"
+        stderr = ""
+
+    monkeypatch.setattr(blurt.subprocess, "run", lambda *a, **kw: OkResult())
+    blurt._check_accessibility()
+    captured = capsys.readouterr()
+    assert captured.out == ""
