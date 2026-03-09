@@ -81,7 +81,149 @@ BLURT_DIR = Path.home() / ".blurt"
 JSONL_PATH = BLURT_DIR / "blurts.jsonl"
 AUDIO_DIR = BLURT_DIR / "audio"
 VOCAB_PATH = BLURT_DIR / "vocab.txt"
-SOUNDS_DIR = Path(__file__).parent / "sounds"
+CONFIG_PATH = BLURT_DIR / "config.toml"
+
+# --- Supported languages (Whisper large-v3-turbo) ---
+SUPPORTED_LANGUAGES = {
+    "en": "English",
+    "zh": "Chinese",
+    "de": "German",
+    "es": "Spanish",
+    "ru": "Russian",
+    "ko": "Korean",
+    "fr": "French",
+    "ja": "Japanese",
+    "pt": "Portuguese",
+    "tr": "Turkish",
+    "pl": "Polish",
+    "ca": "Catalan",
+    "nl": "Dutch",
+    "ar": "Arabic",
+    "sv": "Swedish",
+    "it": "Italian",
+    "id": "Indonesian",
+    "hi": "Hindi",
+    "fi": "Finnish",
+    "vi": "Vietnamese",
+    "he": "Hebrew",
+    "uk": "Ukrainian",
+    "el": "Greek",
+    "ms": "Malay",
+    "cs": "Czech",
+    "ro": "Romanian",
+    "da": "Danish",
+    "hu": "Hungarian",
+    "ta": "Tamil",
+    "no": "Norwegian",
+    "th": "Thai",
+    "ur": "Urdu",
+    "hr": "Croatian",
+    "bg": "Bulgarian",
+    "lt": "Lithuanian",
+    "la": "Latin",
+    "mi": "Maori",
+    "ml": "Malayalam",
+    "cy": "Welsh",
+    "sk": "Slovak",
+    "te": "Telugu",
+    "fa": "Persian",
+    "lv": "Latvian",
+    "bn": "Bengali",
+    "sr": "Serbian",
+    "az": "Azerbaijani",
+    "sl": "Slovenian",
+    "kn": "Kannada",
+    "et": "Estonian",
+    "mk": "Macedonian",
+    "br": "Breton",
+    "eu": "Basque",
+    "is": "Icelandic",
+    "hy": "Armenian",
+    "ne": "Nepali",
+    "mn": "Mongolian",
+    "bs": "Bosnian",
+    "kk": "Kazakh",
+    "sq": "Albanian",
+    "sw": "Swahili",
+    "gl": "Galician",
+    "mr": "Marathi",
+    "pa": "Punjabi",
+    "si": "Sinhala",
+    "km": "Khmer",
+    "sn": "Shona",
+    "yo": "Yoruba",
+    "so": "Somali",
+    "af": "Afrikaans",
+    "oc": "Occitan",
+    "ka": "Georgian",
+    "be": "Belarusian",
+    "tg": "Tajik",
+    "sd": "Sindhi",
+    "gu": "Gujarati",
+    "am": "Amharic",
+    "yi": "Yiddish",
+    "lo": "Lao",
+    "uz": "Uzbek",
+    "fo": "Faroese",
+    "ht": "Haitian Creole",
+    "ps": "Pashto",
+    "tk": "Turkmen",
+    "nn": "Nynorsk",
+    "mt": "Maltese",
+    "sa": "Sanskrit",
+    "lb": "Luxembourgish",
+    "my": "Myanmar",
+    "bo": "Tibetan",
+    "tl": "Tagalog",
+    "mg": "Malagasy",
+    "as": "Assamese",
+    "tt": "Tatar",
+    "haw": "Hawaiian",
+    "ln": "Lingala",
+    "ha": "Hausa",
+    "ba": "Bashkir",
+    "jw": "Javanese",
+    "su": "Sundanese",
+    "yue": "Cantonese",
+}
+
+
+# --- Config ---
+def _load_config() -> dict:
+    """Load config from ~/.blurt/config.toml. Returns empty dict if missing."""
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        try:
+            import tomli as tomllib  # type: ignore[no-redef]
+        except ModuleNotFoundError:
+            # Fallback: parse simple key = "value" lines
+            config = {}
+            for line in CONFIG_PATH.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    k, _, v = line.partition("=")
+                    config[k.strip()] = v.strip().strip('"').strip("'")
+            return config
+    try:
+        return tomllib.loads(CONFIG_PATH.read_text())
+    except Exception:
+        return {}
+
+
+def _get_language() -> str:
+    """Get configured language from config, defaulting to 'en'."""
+    config = _load_config()
+    lang = config.get("language", "en")
+    if lang not in SUPPORTED_LANGUAGES:
+        console.print(f"  [yellow]Unknown language '{lang}' in config, using 'en'[/yellow]")
+        return "en"
+    return lang
+
 
 # --- State ---
 recording = False
@@ -93,7 +235,7 @@ model_lock = threading.Lock()
 whisper_pipe = None
 rec_status = None
 total_words = 0
-_sound_cache: dict[str, tuple[np.ndarray, int]] = {}  # name -> (samples, sample_rate)
+_last_input_device: int | str | None = None  # track default input device for hot-swap detection
 
 
 def show_log(n=20):
@@ -265,7 +407,7 @@ def load_model():
                     mlx_whisper.transcribe(
                         dummy,
                         path_or_hf_repo=MODEL,
-                        language="en",
+                        language=_get_language(),
                         condition_on_previous_text=False,
                         temperature=0.0,
                         without_timestamps=True,
@@ -280,7 +422,7 @@ def load_model():
                 mlx_whisper.transcribe(
                     dummy,
                     path_or_hf_repo=MODEL,
-                    language="en",
+                    language=_get_language(),
                     condition_on_previous_text=False,
                     temperature=0.0,
                     without_timestamps=True,
@@ -289,56 +431,25 @@ def load_model():
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
 
 
-def _preload_sounds():
-    """Pre-load sound files as numpy arrays for instant playback (no new deps)."""
-    global _sound_cache
-    import tempfile
-
-    for name in ("on", "off"):
-        path = SOUNDS_DIR / f"{name}.mp3"
-        if not path.exists():
-            continue
-        tmp_path = None
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp_path = tmp.name
-            subprocess.run(
-                ["afconvert", "-f", "WAVE", "-d", "LEI16", str(path), tmp_path],
-                capture_output=True,
-                check=True,
-            )
-            with wave.open(tmp_path, "r") as wf:
-                sr = wf.getframerate()
-                frames = wf.readframes(wf.getnframes())
-                samples = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-                _sound_cache[name] = (samples, sr)
-        except Exception:
-            pass
-        finally:
-            if tmp_path:
-                Path(tmp_path).unlink(missing_ok=True)
-
-
-def _play_sound(name):
-    """Play a pre-loaded sound via sounddevice (no subprocess fork)."""
-    entry = _sound_cache.get(name)
-    if entry is not None:
-        samples, sr = entry
-        try:
-            sd.play(samples, samplerate=sr, device=sd.default.device[1])
-        except Exception:
-            pass
-        return
-    # Fallback if sounds weren't pre-loaded
-    path = SOUNDS_DIR / f"{name}.mp3"
-    if path.exists():
-        subprocess.Popen(["afplay", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
 def audio_callback(indata, frames, time_info, status):
     if status:
         console.print(f"Audio: {status}", style="yellow")
     audio_buffer.append(indata.copy())
+
+
+def _refresh_audio_device():
+    """Re-query sounddevice for the current default input device (handles hot-swap)."""
+    global _last_input_device
+    try:
+        sd._terminate()
+        sd._initialize()
+        current = sd.default.device[0]
+        if _last_input_device is not None and current != _last_input_device:
+            dev_info = sd.query_devices(current)
+            console.print(f"  [{C_DIM}]Audio input switched to: {dev_info['name']}[/{C_DIM}]")
+        _last_input_device = current
+    except Exception:
+        pass
 
 
 def start_recording():
@@ -361,7 +472,12 @@ def start_recording():
                 break
             except sd.PortAudioError:
                 stream = None
-                if attempt < max_retries - 1:
+                if attempt == 0:
+                    # Device may have changed — refresh PortAudio and retry
+                    lock.release()
+                    _refresh_audio_device()
+                    lock.acquire()
+                elif attempt < max_retries - 1:
                     console.print(f"  [{C_REC}]Reconnecting audio... ({attempt + 1}/{max_retries})[/{C_REC}]")
                     lock.release()
                     time.sleep(1)
@@ -450,13 +566,35 @@ def _resolve_file_refs(text: str) -> str:
     return result.strip()
 
 
+def _vad_trim(audio: np.ndarray, sr: int, frame_ms: int = 30, energy_threshold: float = 0.005) -> np.ndarray:
+    """Trim leading and trailing silence using energy-based voice activity detection.
+
+    Splits audio into frames, computes RMS energy per frame, and strips silent
+    frames from the start and end. Keeps a small margin (2 frames) for natural speech.
+    """
+    frame_len = int(sr * frame_ms / 1000)
+    if len(audio) < frame_len:
+        return audio
+
+    n_frames = len(audio) // frame_len
+    energies = np.array([np.sqrt(np.mean(audio[i * frame_len : (i + 1) * frame_len] ** 2)) for i in range(n_frames)])
+
+    # Find first and last frames above threshold
+    active = np.where(energies > energy_threshold)[0]
+    if len(active) == 0:
+        return audio  # all silence — let downstream handle it
+
+    start = max(0, active[0] - 2) * frame_len
+    end = min(n_frames, active[-1] + 3) * frame_len  # +3 for margin (2 frames after last active)
+    return audio[start:end]
+
+
 def stop_recording():
     global recording, stream, rec_status
     with lock:
         if not recording:
             return
         recording = False
-        _play_sound("off")
         if rec_status:
             rec_status.stop()
             rec_status = None
@@ -469,6 +607,9 @@ def stop_recording():
         return
 
     audio_data = np.concatenate(audio_buffer, axis=0).flatten()
+
+    # Trim silence from start/end for faster transcription
+    audio_data = _vad_trim(audio_data, SAMPLE_RATE)
     duration_s = round(len(audio_data) / SAMPLE_RATE, 2)
 
     if duration_s < 0.5:
@@ -492,7 +633,7 @@ def stop_recording():
         load_model()
         transcribe_kwargs = dict(
             path_or_hf_repo=MODEL,
-            language="en",
+            language=_get_language(),
             condition_on_previous_text=False,
             temperature=0.0,
             without_timestamps=True,
@@ -601,7 +742,6 @@ def on_press(key):
     pressed_keys.add(_normalize(key))
     if SHORTCUT.issubset(pressed_keys):
         if not recording:
-            _play_sound("on")
             threading.Thread(target=start_recording, daemon=True).start()
 
 
@@ -676,6 +816,27 @@ def cmd_upgrade():
     sys.exit(subprocess.call(cmd))
 
 
+def _check_microphone():
+    """Probe microphone access by opening a brief test stream."""
+    try:
+        test_stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype="float32")
+        test_stream.start()
+        test_stream.stop()
+        test_stream.close()
+    except sd.PortAudioError as e:
+        err = str(e).lower()
+        if "permission" in err or "not allowed" in err or "denied" in err:
+            console.print(f"  [{C_REC}]Microphone permission not granted[/{C_REC}]")
+            console.print(
+                f"  [{C_DIM}]System Settings → Privacy & Security → Microphone → enable your terminal[/{C_DIM}]"
+            )
+        else:
+            console.print(f"  [{C_REC}]No audio input device available[/{C_REC}]")
+            console.print(f"  [{C_DIM}]check your microphone is connected and set as default input[/{C_DIM}]")
+    except Exception:
+        pass
+
+
 def _check_accessibility():
     """Warn if Accessibility permissions are not granted (keyboard listener will silently fail)."""
     try:
@@ -695,6 +856,115 @@ def _check_accessibility():
         pass
 
 
+def cmd_doctor():
+    """Run health checks and report system status."""
+    console.print(f"\n  [bold {C_ACCENT}]blurt doctor[/bold {C_ACCENT}]\n")
+    all_ok = True
+
+    # 1. macOS check
+    if sys.platform == "darwin":
+        console.print(f"  [{C_OK}]✓[/{C_OK}] macOS detected")
+    else:
+        console.print("  [red]✗[/red] not macOS — blurt requires macOS with Apple Silicon")
+        all_ok = False
+
+    # 2. PortAudio / sounddevice
+    try:
+        devices = sd.query_devices()
+        input_devs = [d for d in devices if d["max_input_channels"] > 0] if isinstance(devices, list) else []
+        if not isinstance(devices, list):
+            # Single device returned
+            input_devs = [devices] if devices.get("max_input_channels", 0) > 0 else []
+        console.print(f"  [{C_OK}]✓[/{C_OK}] portaudio ok — {len(input_devs)} input device(s)")
+        default_in = sd.query_devices(sd.default.device[0])
+        console.print(f"    [{C_DIM}]default: {default_in['name']}[/{C_DIM}]")
+    except Exception as e:
+        console.print(f"  [red]✗[/red] portaudio error: {e}")
+        console.print(f"    [{C_DIM}]try: brew install portaudio[/{C_DIM}]")
+        all_ok = False
+
+    # 3. Microphone access
+    try:
+        test_stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype="float32")
+        test_stream.start()
+        test_stream.stop()
+        test_stream.close()
+        console.print(f"  [{C_OK}]✓[/{C_OK}] microphone access granted")
+    except sd.PortAudioError as e:
+        err = str(e).lower()
+        if "permission" in err or "denied" in err:
+            console.print("  [red]✗[/red] microphone permission denied")
+            console.print(
+                f"    [{C_DIM}]System Settings → Privacy & Security → Microphone → enable your terminal[/{C_DIM}]"
+            )
+        else:
+            console.print(f"  [red]✗[/red] microphone unavailable: {e}")
+        all_ok = False
+    except Exception as e:
+        console.print(f"  [red]✗[/red] microphone check failed: {e}")
+        all_ok = False
+
+    # 4. Accessibility (osascript)
+    if sys.platform == "darwin":
+        try:
+            result = subprocess.run(
+                ["osascript", "-e", 'tell application "System Events" to return name of first process'],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                console.print(f"  [{C_OK}]✓[/{C_OK}] accessibility permission granted")
+            else:
+                console.print("  [red]✗[/red] accessibility permission not granted")
+                console.print(
+                    f"    [{C_DIM}]System Settings → Privacy & Security → Accessibility"
+                    f" → enable your terminal[/{C_DIM}]"
+                )
+                all_ok = False
+        except Exception:
+            console.print("  [yellow]?[/yellow] could not check accessibility")
+
+    # 5. Whisper model cached
+    if _model_is_cached(MODEL):
+        console.print(f"  [{C_OK}]✓[/{C_OK}] model cached ({MODEL.split('/')[-1]})")
+    else:
+        console.print("  [yellow]![/yellow] model not cached — will download (~1.6 GB) on first use")
+
+    # 6. Config / language
+    config = _load_config()
+    lang = config.get("language", "en")
+    lang_name = SUPPORTED_LANGUAGES.get(lang, "Unknown")
+    if lang in SUPPORTED_LANGUAGES:
+        console.print(f"  [{C_OK}]✓[/{C_OK}] language: {lang} ({lang_name})")
+    else:
+        console.print(f"  [yellow]![/yellow] unknown language '{lang}' in config")
+        all_ok = False
+
+    # 7. Vocab
+    words = _load_vocab()
+    console.print(f"  [{C_OK}]✓[/{C_OK}] vocab: {len(words)} word(s)")
+
+    # 8. Git repo (for @-mentions)
+    file_count = len(_build_file_index())
+    if file_count > 0:
+        console.print(f"  [{C_OK}]✓[/{C_OK}] git repo: {file_count} files indexed")
+    else:
+        console.print(f"  [{C_DIM}]-[/{C_DIM}] no git repo (run from project dir for @-mentions)")
+
+    # 9. Data dirs
+    console.print(f"  [{C_OK}]✓[/{C_OK}] data dir: {str(BLURT_DIR).replace(str(Path.home()), '~')}")
+    if AUDIO_DIR.exists():
+        wav_count = len(list(AUDIO_DIR.glob("*.wav")))
+        console.print(f"    [{C_DIM}]{wav_count} audio file(s)[/{C_DIM}]")
+
+    # Summary
+    if all_ok:
+        console.print(f"\n  [bold {C_OK}]All checks passed![/bold {C_OK}]\n")
+    else:
+        console.print("\n  [bold yellow]Some checks failed — see above.[/bold yellow]\n")
+
+
 def show_help():
     """Print CLI usage."""
     console.print(f"\n  [bold {C_ACCENT}]blurt[/bold {C_ACCENT}] - on-device voice-to-text for macOS\n")
@@ -704,6 +974,7 @@ def show_help():
     console.print("    blurt rm <word/phrase>      remove word from vocab")
     console.print("    blurt vocab                 list vocab words")
     console.print("    blurt log [-n N]            show recent transcriptions (default 20)")
+    console.print("    blurt doctor                run health checks")
     console.print("    blurt upgrade|update        check for updates and upgrade")
     console.print("    blurt help                  show this help")
     console.print("    blurt --version             show version")
@@ -738,6 +1009,10 @@ def main():
 
     if len(sys.argv) >= 3 and sys.argv[1] == "rm":
         rm_vocab(" ".join(sys.argv[2:]))
+        return
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "doctor":
+        cmd_doctor()
         return
 
     if len(sys.argv) >= 2 and sys.argv[1] in ("upgrade", "update"):
@@ -782,6 +1057,9 @@ def main():
     info.add_column()
     info.add_row("shortcut", shortcut_str)
     info.add_row("model", MODEL.split("/")[-1])
+    lang = _get_language()
+    lang_name = SUPPORTED_LANGUAGES.get(lang, lang)
+    info.add_row("language", f"{lang_name} ({lang})")
     home = str(Path.home())
     info.add_row("log", str(JSONL_PATH).replace(home, "~"))
     info.add_row("audio", str(AUDIO_DIR).replace(home, "~"))
@@ -809,11 +1087,9 @@ def main():
 
     console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 hold shortcut to record[/{C_DIM}]\n")
 
-    # Check accessibility permissions (keyboard listener won't work without them)
+    # Check permissions (keyboard + microphone)
     _check_accessibility()
-
-    # Pre-load sounds into memory for instant playback
-    _preload_sounds()
+    _check_microphone()
 
     # Check for updates in background
     threading.Thread(target=_check_update_bg, daemon=True).start()

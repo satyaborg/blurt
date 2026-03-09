@@ -39,9 +39,6 @@ blurt = "blurt:main"
 [tool.setuptools]
 packages = ["blurt"]
 
-[tool.setuptools.package-data]
-blurt = ["sounds/*.mp3"]
-
 [tool.ruff]
 line-length = 120
 
