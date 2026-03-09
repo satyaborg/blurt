@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.1](https://github.com/satyaborg/blurt/releases/tag/v0.7.1) — 2026-03-09
+
+### Changes
+
+- Remove unused sounds directory ([8e1db44](https://github.com/satyaborg/blurt/commit/8e1db44d454a3665d4c784c4c5e73bf90abe97bc))
+- Remove unused THEMES variable ([3e5e728](https://github.com/satyaborg/blurt/commit/3e5e728d0e375f93f913143e10cc2c681cbf564c))
 ## [0.7.0](https://github.com/satyaborg/blurt/releases/tag/v0.7.0) — 2026-03-09
 
 ### Features
@@ -10,6 +16,7 @@ All notable changes to this project will be documented in this file.
 ### Other
 
 - changelog v0.6.5 ([d07c1a8](https://github.com/satyaborg/blurt/commit/d07c1a8ed20981d7776b1931ae50eb55546728a3))
+- changelog v0.7.0 ([ccf04c7](https://github.com/satyaborg/blurt/commit/ccf04c79d9a0cd55be5dbb82da66725367bb4175))
 ## [0.6.4](https://github.com/satyaborg/blurt/releases/tag/v0.6.4) — 2026-03-09
 
 ### Changes
