@@ -1,12 +1,21 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.2](https://github.com/satyaborg/blurt/releases/tag/v0.7.2) — 2026-03-09
+
+### Bug fixes
+
+- Fix doctor portaudio check for DeviceList type ([7d5152b](https://github.com/satyaborg/blurt/commit/7d5152b436becff04b69272b2ff3ebb0a18b9354))
 ## [0.7.1](https://github.com/satyaborg/blurt/releases/tag/v0.7.1) — 2026-03-09
 
 ### Changes
 
 - Remove unused sounds directory ([8e1db44](https://github.com/satyaborg/blurt/commit/8e1db44d454a3665d4c784c4c5e73bf90abe97bc))
 - Remove unused THEMES variable ([3e5e728](https://github.com/satyaborg/blurt/commit/3e5e728d0e375f93f913143e10cc2c681cbf564c))
+
+### Other
+
+- changelog v0.7.1 ([f8ec340](https://github.com/satyaborg/blurt/commit/f8ec340a6cadfa149a28ff71b08529fa27eee7ba))
 ## [0.7.0](https://github.com/satyaborg/blurt/releases/tag/v0.7.0) — 2026-03-09
 
 ### Features
