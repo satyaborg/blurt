@@ -428,6 +428,42 @@ def load_model():
                 )
                 whisper_pipe = mlx_whisper
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
+            _start_keepalive()
+
+
+# Keep-alive interval (seconds) — run a tiny inference to prevent macOS from paging out model weights
+_KEEPALIVE_INTERVAL = 300  # 5 minutes
+_keepalive_timer: threading.Timer | None = None
+
+
+def _keepalive_loop():
+    """Periodically run a dummy transcription to keep the model weights in memory."""
+    global _keepalive_timer
+    with model_lock:
+        if whisper_pipe is not None:
+            try:
+                dummy = np.zeros(SAMPLE_RATE // 10, dtype=np.float32)  # 0.1s of silence
+                whisper_pipe.transcribe(
+                    dummy,
+                    path_or_hf_repo=MODEL,
+                    language=_get_language(),
+                    condition_on_previous_text=False,
+                    temperature=0.0,
+                    without_timestamps=True,
+                )
+            except Exception:
+                pass
+    _keepalive_timer = threading.Timer(_KEEPALIVE_INTERVAL, _keepalive_loop)
+    _keepalive_timer.daemon = True
+    _keepalive_timer.start()
+
+
+def _start_keepalive():
+    """Start the periodic model keep-alive after initial load."""
+    global _keepalive_timer
+    _keepalive_timer = threading.Timer(_KEEPALIVE_INTERVAL, _keepalive_loop)
+    _keepalive_timer.daemon = True
+    _keepalive_timer.start()
 
 
 def audio_callback(indata, frames, time_info, status):
