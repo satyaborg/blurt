@@ -1,6 +1,15 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.0](https://github.com/satyaborg/blurt/releases/tag/v0.7.0) — 2026-03-09
+
+### Features
+
+- Add reliability, multi-language, VAD, doctor; remove sounds ([e66cfbe](https://github.com/satyaborg/blurt/commit/e66cfbe36c3745322b7ed90c0c11e255f558462d))
+
+### Other
+
+- changelog v0.6.5 ([d07c1a8](https://github.com/satyaborg/blurt/commit/d07c1a8ed20981d7776b1931ae50eb55546728a3))
 ## [0.6.4](https://github.com/satyaborg/blurt/releases/tag/v0.6.4) — 2026-03-09
 
 ### Changes
