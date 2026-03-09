@@ -869,11 +869,8 @@ def cmd_doctor():
 
     # 2. PortAudio / sounddevice
     try:
-        devices = sd.query_devices()
-        input_devs = [d for d in devices if d["max_input_channels"] > 0] if isinstance(devices, list) else []
-        if not isinstance(devices, list):
-            # Single device returned
-            input_devs = [devices] if devices.get("max_input_channels", 0) > 0 else []
+        devices = list(sd.query_devices())
+        input_devs = [d for d in devices if d["max_input_channels"] > 0]
         console.print(f"  [{C_OK}]✓[/{C_OK}] portaudio ok — {len(input_devs)} input device(s)")
         default_in = sd.query_devices(sd.default.device[0])
         console.print(f"    [{C_DIM}]default: {default_in['name']}[/{C_DIM}]")
