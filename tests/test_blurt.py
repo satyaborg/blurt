@@ -2,6 +2,7 @@ import json
 import sys
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 import blurt
@@ -434,3 +435,120 @@ def test_check_accessibility_silent_on_success(monkeypatch, capsys):
     blurt._check_accessibility()
     captured = capsys.readouterr()
     assert captured.out == ""
+
+
+# --- Config / language ---
+
+
+def test_load_config_missing_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(blurt, "CONFIG_PATH", tmp_path / "missing.toml")
+    assert blurt._load_config() == {}
+
+
+def test_load_config_simple_keyval(tmp_path, monkeypatch):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('language = "es"\n')
+    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    config = blurt._load_config()
+    assert config["language"] == "es"
+
+
+def test_get_language_default(tmp_path, monkeypatch):
+    monkeypatch.setattr(blurt, "CONFIG_PATH", tmp_path / "missing.toml")
+    assert blurt._get_language() == "en"
+
+
+def test_get_language_configured(tmp_path, monkeypatch):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('language = "ja"\n')
+    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    assert blurt._get_language() == "ja"
+
+
+def test_get_language_invalid_falls_back(tmp_path, monkeypatch, capsys):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('language = "zz"\n')
+    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    assert blurt._get_language() == "en"
+    captured = capsys.readouterr()
+    assert "Unknown language" in captured.out
+
+
+# --- VAD trimming ---
+
+
+def test_vad_trim_removes_leading_silence():
+    sr = 16000
+    silence = np.zeros(sr, dtype=np.float32)  # 1 second silence
+    speech = np.random.randn(sr).astype(np.float32) * 0.1  # 1 second speech
+    audio = np.concatenate([silence, speech])
+    trimmed = blurt._vad_trim(audio, sr)
+    assert len(trimmed) < len(audio)
+    assert len(trimmed) > 0
+
+
+def test_vad_trim_removes_trailing_silence():
+    sr = 16000
+    speech = np.random.randn(sr).astype(np.float32) * 0.1
+    silence = np.zeros(sr, dtype=np.float32)
+    audio = np.concatenate([speech, silence])
+    trimmed = blurt._vad_trim(audio, sr)
+    assert len(trimmed) < len(audio)
+
+
+def test_vad_trim_preserves_speech_only():
+    sr = 16000
+    speech = np.random.randn(sr).astype(np.float32) * 0.1
+    trimmed = blurt._vad_trim(speech, sr)
+    # Should not lose significant data (margins may add/remove a frame or two)
+    assert len(trimmed) >= len(speech) * 0.8
+
+
+def test_vad_trim_all_silence_returns_original():
+    sr = 16000
+    silence = np.zeros(sr, dtype=np.float32)
+    trimmed = blurt._vad_trim(silence, sr)
+    assert len(trimmed) == len(silence)
+
+
+def test_vad_trim_short_audio_returns_original():
+    sr = 16000
+    short = np.array([0.1, 0.2], dtype=np.float32)
+    trimmed = blurt._vad_trim(short, sr)
+    assert len(trimmed) == len(short)
+
+
+# --- doctor CLI ---
+
+
+def test_doctor_subcommand(monkeypatch, capsys):
+    """blurt doctor should run without crashing."""
+    monkeypatch.setattr(blurt, "_model_is_cached", lambda _: True)
+    monkeypatch.setattr(blurt, "_file_index", ["test.py"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+
+    class FakeStream:
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(blurt.sd, "InputStream", lambda **kw: FakeStream())
+    monkeypatch.setattr(blurt.sd, "query_devices", lambda *a: [{"name": "Mic", "max_input_channels": 1}])
+    monkeypatch.setattr(blurt.sd.default, "device", (0, 1))
+
+    class OkResult:
+        returncode = 0
+        stdout = "Finder"
+        stderr = ""
+
+    monkeypatch.setattr(blurt.subprocess, "run", lambda *a, **kw: OkResult())
+
+    with patch.object(sys, "argv", ["blurt", "doctor"]):
+        blurt.main()
+    captured = capsys.readouterr()
+    assert "blurt doctor" in captured.out
