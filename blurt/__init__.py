@@ -368,8 +368,8 @@ def start_recording():
                     lock.acquire()
                 else:
                     recording = False
-                    msg = "Audio device unavailable - replug or switch input and try again"
-                    console.print(f"  [{C_REC}]{msg}[/{C_REC}]")
+                    console.print(f"  [{C_REC}]Audio device unavailable[/{C_REC}]")
+                    console.print(f"  [{C_DIM}]try: sudo killall coreaudiod — or replug/switch input[/{C_DIM}]")
                     return
         rec_status = console.status(f"  [{C_REC}]Listening...[/{C_REC}]")
         rec_status.start()
@@ -474,7 +474,10 @@ def stop_recording():
     if duration_s < 0.5:
         return
 
-    # Skip silence - prevents vocab hallucinations from initial_prompt
+    # Skip all-zero audio (CoreAudio bug on macOS Tahoe) or silence
+    if np.max(np.abs(audio_data)) == 0:
+        console.print(f"  [{C_REC}]Audio device returned silence — try: sudo killall coreaudiod[/{C_REC}]")
+        return
     rms = np.sqrt(np.mean(audio_data**2))
     if rms < 0.003:
         return
@@ -548,18 +551,31 @@ def _set_clipboard(data: bytes):
     proc.communicate(data)
 
 
+def _simulate_paste() -> bool:
+    """Simulate Cmd+V via osascript. Returns True on success."""
+    result = subprocess.run(
+        [
+            "osascript",
+            "-e",
+            'tell application "System Events" to keystroke "v" using command down',
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
 def paste_transcription(text: str):
     """Copy text, paste it, then restore the previous clipboard."""
     prev = _get_clipboard()
     _set_clipboard(text.encode("utf-8"))
     time.sleep(0.15)
-    subprocess.run(
-        [
-            "osascript",
-            "-e",
-            'tell application "System Events" to keystroke "v" using command down',
-        ]
-    )
+    if not _simulate_paste():
+        # Retry once after a short delay (works around transient osascript failures on macOS Tahoe)
+        time.sleep(0.3)
+        if not _simulate_paste():
+            console.print(f"  [{C_REC}]Paste failed — text is in clipboard, use ⌘V manually[/{C_REC}]")
+            return
     time.sleep(0.1)
     _set_clipboard(prev)
 
@@ -658,6 +674,25 @@ def cmd_upgrade():
 
     console.print(f"  [{C_DIM}]{' '.join(cmd)}[/{C_DIM}]\n")
     sys.exit(subprocess.call(cmd))
+
+
+def _check_accessibility():
+    """Warn if Accessibility permissions are not granted (keyboard listener will silently fail)."""
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", 'tell application "System Events" to return name of first process'],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            console.print(f"  [{C_REC}]Accessibility permission may not be granted[/{C_REC}]")
+            console.print(
+                f"  [{C_DIM}]System Settings → Privacy & Security → Accessibility → enable your terminal[/{C_DIM}]"
+            )
+            console.print(f"  [{C_DIM}]if already enabled, try: sudo tccutil reset Accessibility[/{C_DIM}]")
+    except Exception:
+        pass
 
 
 def show_help():
@@ -773,6 +808,9 @@ def main():
         console.print(f"\n  [{C_DIM}]no git repo — run from a project directory to enable @-mentions[/{C_DIM}]")
 
     console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 hold shortcut to record[/{C_DIM}]\n")
+
+    # Check accessibility permissions (keyboard listener won't work without them)
+    _check_accessibility()
 
     # Pre-load sounds into memory for instant playback
     _preload_sounds()
