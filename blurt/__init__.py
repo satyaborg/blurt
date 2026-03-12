@@ -540,6 +540,25 @@ def _is_hallucination(segments):
     return False
 
 
+_PROMPT_ECHO_THRESHOLD = 0.8  # fraction of transcribed words found in prompt → likely echo
+
+
+def _is_prompt_echo(text: str, prompt: str | None) -> bool:
+    """Check if transcription is just the initial_prompt (vocab/file words) echoed back."""
+    if not prompt:
+        return False
+
+    def _words(s: str) -> set[str]:
+        return set(s.lower().replace(",", " ").split())
+
+    prompt_words = _words(prompt)
+    text_words = _words(text)
+    if not text_words:
+        return False
+    overlap = text_words & prompt_words
+    return len(overlap) / len(text_words) >= _PROMPT_ECHO_THRESHOLD
+
+
 # --- File reference resolution ---
 
 _file_index: list[str] | None = None
@@ -684,7 +703,7 @@ def stop_recording():
     text = result["text"].strip()
     segments = result.get("segments", [])
 
-    if not text or _is_hallucination(segments):
+    if not text or _is_hallucination(segments) or _is_prompt_echo(text, prompt):
         return
 
     text = _resolve_file_refs(text)
