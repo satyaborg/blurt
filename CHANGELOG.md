@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.6](https://github.com/satyaborg/blurt/releases/tag/v0.7.6) — 2026-03-12
+
+### Other
+
+- Detect vocab prompt echo as hallucination on silent recordings ([3263df6](https://github.com/satyaborg/blurt/commit/3263df60cb6e88ed931fb3b48cedb951427c500d))
 ## [0.7.4](https://github.com/satyaborg/blurt/releases/tag/v0.7.4) — 2026-03-09
 
 ### Features
@@ -10,6 +15,7 @@ All notable changes to this project will be documented in this file.
 ### Other
 
 - changelog v0.7.3 ([ba4bd9c](https://github.com/satyaborg/blurt/commit/ba4bd9c81f944505a3366484724913b4c53726e2))
+- changelog v0.7.4 ([821f731](https://github.com/satyaborg/blurt/commit/821f7317fd7e7402258e1686d736fc4ee251cffb))
 ## [0.7.2](https://github.com/satyaborg/blurt/releases/tag/v0.7.2) — 2026-03-09
 
 ### Bug fixes
