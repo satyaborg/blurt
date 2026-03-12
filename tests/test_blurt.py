@@ -34,6 +34,36 @@ def test_hallucination_mixed_no_speech():
     assert blurt._is_hallucination(segments) is False
 
 
+def test_prompt_echo_exact_vocab(tmp_path, monkeypatch):
+    """Transcription that's just vocab words echoed back should be detected."""
+    prompt = "Kubernetes, pydantic, FastAPI"
+    assert blurt._is_prompt_echo("Kubernetes, pydantic, FastAPI", prompt) is True
+
+
+def test_prompt_echo_partial(tmp_path, monkeypatch):
+    """Mostly vocab words should still be detected."""
+    prompt = "Kubernetes, pydantic, FastAPI, Blurt"
+    assert blurt._is_prompt_echo("Kubernetes pydantic Blurt the FastAPI", prompt) is True
+
+
+def test_prompt_echo_real_speech():
+    """Real speech that happens to contain some vocab words should NOT be flagged."""
+    prompt = "Kubernetes, pydantic"
+    text = "deploy the Kubernetes cluster and add pydantic validation to the API endpoints"
+    assert blurt._is_prompt_echo(text, prompt) is False
+
+
+def test_prompt_echo_file_names():
+    """File basenames echoed back should also be caught."""
+    prompt = "__init__.py, README.md, cliff.toml"
+    assert blurt._is_prompt_echo("__init__.py, README.md, cliff.toml", prompt) is True
+
+
+def test_prompt_echo_no_prompt():
+    """No prompt means no echo possible."""
+    assert blurt._is_prompt_echo("some text", None) is False
+
+
 # --- load_stats ---
 
 
