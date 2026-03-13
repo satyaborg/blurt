@@ -1,11 +1,17 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.7](https://github.com/satyaborg/blurt/releases/tag/v0.7.7) — 2026-03-13
+
+### Features
+
+- Add ready sound chime on model load ([b01a5f7](https://github.com/satyaborg/blurt/commit/b01a5f78012f86daaf8e181ce6d1463f7c28a843))
 ## [0.7.6](https://github.com/satyaborg/blurt/releases/tag/v0.7.6) — 2026-03-12
 
 ### Other
 
 - Detect vocab prompt echo as hallucination on silent recordings ([3263df6](https://github.com/satyaborg/blurt/commit/3263df60cb6e88ed931fb3b48cedb951427c500d))
+- changelog v0.7.6 ([036909a](https://github.com/satyaborg/blurt/commit/036909ae4c2771eb992b0da09f045862872450ec))
 ## [0.7.4](https://github.com/satyaborg/blurt/releases/tag/v0.7.4) — 2026-03-09
 
 ### Features
