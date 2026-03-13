@@ -110,7 +110,6 @@ AUDIO_DIR = BLURT_DIR / "audio"
 VOCAB_PATH = BLURT_DIR / "vocab.txt"
 SOUNDS_DIR = Path(__file__).parent / "sounds"
 CONFIG_PATH = BLURT_DIR / "config.toml"
-SOUNDS_DIR = Path(__file__).parent / "sounds"
 
 # --- Supported languages (Whisper large-v3-turbo) ---
 SUPPORTED_LANGUAGES = {
@@ -252,6 +251,7 @@ def _get_language() -> str:
         console.print(f"  [yellow]Unknown language '{lang}' in config, using 'en'[/yellow]")
         return "en"
     return lang
+
 
 # --- State ---
 recording = False
@@ -434,13 +434,6 @@ def _model_is_cached(repo_id: str) -> bool:
         return False
 
 
-def _play_ready_sound():
-    """Play the ready chime via macOS afplay (non-blocking)."""
-    sound_file = SOUNDS_DIR / "ready.mp3"
-    if sound_file.exists():
-        subprocess.Popen(["afplay", str(sound_file)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
 def load_model():
     """Lazy-load mlx-whisper on first use."""
     global whisper_pipe
@@ -479,7 +472,7 @@ def load_model():
                     without_timestamps=True,
                 )
                 whisper_pipe = mlx_whisper
-            _play_ready_sound()
+            _play_sound("ready")
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
             _start_keepalive()
 
@@ -548,7 +541,9 @@ def _is_audio_active():
             src_path.write_text(_IS_AUDIO_ACTIVE_SWIFT)
             subprocess.run(
                 ["swiftc", "-O", "-o", str(bin_path), str(src_path)],
-                capture_output=True, timeout=60, check=True,
+                capture_output=True,
+                timeout=60,
+                check=True,
             )
         except Exception:
             return True  # assume playing if we can't check
@@ -561,15 +556,14 @@ def _is_audio_active():
         return True  # assume playing if we can't check
 
 
-def _pause_media(audio_was_active=None):
+def _pause_media():
     """Pause media playback if pause_media setting is enabled and audio is active."""
     global _media_paused_by_us
-    if not _load_config().get("pause_media", False):
+    if not _load_config().get("pause_media", True):
         return
     if _mr_lib is None:
         return
-    active = audio_was_active if audio_was_active is not None else _is_audio_active()
-    if not active:
+    if not _is_audio_active():
         return
     try:
         _mr_lib.MRMediaRemoteSendCommand(_MR_PAUSE, None)
@@ -611,14 +605,14 @@ def _refresh_audio_device():
         pass
 
 
-def start_recording(audio_was_active=None):
+def start_recording():
     global recording, stream, audio_buffer, rec_status
     with lock:
         if recording:
             return
         recording = True
         audio_buffer = []
-        _pause_media(audio_was_active=audio_was_active)
+        _pause_media()
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -851,7 +845,8 @@ def stop_recording():
         preview = text[:60] + ("..." if len(text) > 60 else "")
         console.print(f'  [{C_OK}]\u2713[/{C_OK}] "{preview}" [{C_DIM}]{latency_ms}ms[/{C_DIM}]')
     finally:
-        time.sleep(2)
+        if _media_paused_by_us:
+            time.sleep(1)
         _resume_media()
 
 
@@ -925,9 +920,8 @@ def on_press(key):
     pressed_keys.add(_normalize(key))
     if SHORTCUT.issubset(pressed_keys):
         if not recording:
-            audio_was_active = _is_audio_active()
             _play_sound("on")
-            threading.Thread(target=start_recording, args=(audio_was_active,), daemon=True).start()
+            threading.Thread(target=start_recording, daemon=True).start()
 
 
 def on_release(key):
