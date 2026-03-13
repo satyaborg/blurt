@@ -504,6 +504,16 @@ def test_get_language_invalid_falls_back(tmp_path, monkeypatch, capsys):
     assert "Unknown language" in captured.out
 
 
+def test_save_config(tmp_path, monkeypatch):
+    cfg = tmp_path / "config.toml"
+    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    blurt._save_config({"pause_media": True})
+    content = cfg.read_text()
+    assert "pause_media = true" in content
+
+
 # --- VAD trimming ---
 
 
@@ -548,6 +558,101 @@ def test_vad_trim_short_audio_returns_original():
     assert len(trimmed) == len(short)
 
 
+# --- Media pause/resume ---
+
+
+def test_pause_media_sends_command_when_enabled(monkeypatch):
+    """When pause_media is enabled and audio is active, should call MRMediaRemoteSendCommand with PAUSE."""
+    calls = []
+    fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
+    monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
+    monkeypatch.setattr(blurt, "_media_paused_by_us", False)
+    monkeypatch.setattr(blurt, "_load_config", lambda: {"pause_media": True})
+    monkeypatch.setattr(blurt, "_is_audio_active", lambda: True)
+    blurt._pause_media()
+    assert calls == [blurt._MR_PAUSE]
+    assert blurt._media_paused_by_us is True
+
+
+def test_pause_media_noop_when_disabled(monkeypatch):
+    """When pause_media is disabled, should do nothing."""
+    calls = []
+    fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
+    monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
+    monkeypatch.setattr(blurt, "_media_paused_by_us", False)
+    monkeypatch.setattr(blurt, "_load_config", lambda: {"pause_media": False})
+    blurt._pause_media()
+    assert calls == []
+    assert blurt._media_paused_by_us is False
+
+
+def test_pause_media_noop_when_no_framework(monkeypatch):
+    """Should silently handle missing MediaRemote framework."""
+    monkeypatch.setattr(blurt, "_mr_lib", None)
+    monkeypatch.setattr(blurt, "_media_paused_by_us", False)
+    monkeypatch.setattr(blurt, "_load_config", lambda: {"pause_media": True})
+    blurt._pause_media()  # Should not raise
+    assert blurt._media_paused_by_us is False
+
+
+def test_resume_media_sends_play_when_paused(monkeypatch):
+    """Should call MRMediaRemoteSendCommand with PLAY when we previously paused."""
+    calls = []
+    fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
+    monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
+    monkeypatch.setattr(blurt, "_media_paused_by_us", True)
+    blurt._resume_media()
+    assert calls == [blurt._MR_PLAY]
+    assert blurt._media_paused_by_us is False
+
+
+def test_resume_media_noop_when_not_paused(monkeypatch):
+    """Should do nothing if we didn't pause anything."""
+    calls = []
+    fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
+    monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
+    monkeypatch.setattr(blurt, "_media_paused_by_us", False)
+    blurt._resume_media()
+    assert calls == []
+
+
+# --- CLI: blurt pause ---
+
+
+def test_pause_on(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(blurt, "CONFIG_PATH", tmp_path / "config.toml")
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", "pause", "on"]):
+        blurt.main()
+    assert blurt._load_config().get("pause_media") is True
+    captured = capsys.readouterr()
+    assert "on" in captured.out.lower()
+
+
+def test_pause_off(tmp_path, monkeypatch, capsys):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("pause_media = true\n")
+    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", "pause", "off"]):
+        blurt.main()
+    assert blurt._load_config().get("pause_media") is False
+    captured = capsys.readouterr()
+    assert "off" in captured.out.lower()
+
+
+def test_pause_status(tmp_path, monkeypatch, capsys):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("pause_media = true\n")
+    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    with patch.object(sys, "argv", ["blurt", "pause"]):
+        blurt.main()
+    captured = capsys.readouterr()
+    assert "on" in captured.out.lower()
+
+
 # --- doctor CLI ---
 
 
@@ -582,3 +687,46 @@ def test_doctor_subcommand(monkeypatch, capsys):
         blurt.main()
     captured = capsys.readouterr()
     assert "blurt doctor" in captured.out
+
+
+# --- Recording + media integration ---
+
+
+def test_start_recording_pauses_media(monkeypatch):
+    """start_recording should call _pause_media."""
+    paused = []
+    monkeypatch.setattr(blurt, "_pause_media", lambda **kw: paused.append(True))
+    monkeypatch.setattr(blurt, "recording", False)
+    monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "rec_status", None)
+
+    class FakeStream:
+        def start(self):
+            pass
+
+    monkeypatch.setattr(blurt.sd, "InputStream", lambda **kw: FakeStream())
+    monkeypatch.setattr(
+        blurt,
+        "console",
+        type("C", (), {"status": lambda self, x: type("S", (), {"start": lambda s: None})()})(),
+    )
+
+    blurt.start_recording()
+    assert paused == [True]
+
+    # Cleanup
+    monkeypatch.setattr(blurt, "recording", False)
+
+
+def test_stop_recording_resumes_media(monkeypatch):
+    """stop_recording should call _resume_media after closing stream."""
+    resumed = []
+    monkeypatch.setattr(blurt, "_resume_media", lambda: resumed.append(True))
+    monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "stream", type("S", (), {"stop": lambda s: None, "close": lambda s: None})())
+    monkeypatch.setattr(blurt, "rec_status", type("R", (), {"stop": lambda s: None})())
+    monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "_media_paused_by_us", False)
+
+    blurt.stop_recording()
+    assert resumed == [True]

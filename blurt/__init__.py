@@ -10,6 +10,7 @@ Homepage: https://github.com/satyaborg/blurt
 License: MIT
 """
 
+import ctypes
 import json
 import re
 import shutil
@@ -26,6 +27,33 @@ from urllib.request import urlopen
 import numpy as np
 import sounddevice as sd
 from pynput import keyboard
+
+_mr_lib = None
+try:
+    _mr_lib = ctypes.cdll.LoadLibrary("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote")
+    _mr_lib.MRMediaRemoteSendCommand.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+    _mr_lib.MRMediaRemoteSendCommand.restype = ctypes.c_bool
+except OSError:
+    pass
+
+_IS_AUDIO_ACTIVE_SWIFT = """\
+import Foundation
+import CoreAudio
+var propAddr = AudioObjectPropertyAddress(
+    mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+    mScope: kAudioObjectPropertyScopeGlobal,
+    mElement: kAudioObjectPropertyElementMain
+)
+var defaultDev: AudioDeviceID = 0
+var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propAddr, 0, nil, &size, &defaultDev)
+propAddr.mSelector = kAudioDevicePropertyDeviceIsRunningSomewhere
+var isRunning: UInt32 = 0
+size = UInt32(MemoryLayout<UInt32>.size)
+AudioObjectGetPropertyData(defaultDev, &propAddr, 0, nil, &size, &isRunning)
+exit(isRunning > 0 ? 0 : 1)
+"""
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -80,8 +108,8 @@ BLURT_DIR = Path.home() / ".blurt"
 JSONL_PATH = BLURT_DIR / "blurts.jsonl"
 AUDIO_DIR = BLURT_DIR / "audio"
 VOCAB_PATH = BLURT_DIR / "vocab.txt"
-CONFIG_PATH = BLURT_DIR / "config.toml"
 SOUNDS_DIR = Path(__file__).parent / "sounds"
+CONFIG_PATH = BLURT_DIR / "config.toml"
 
 # --- Supported languages (Whisper large-v3-turbo) ---
 SUPPORTED_LANGUAGES = {
@@ -236,6 +264,8 @@ whisper_pipe = None
 rec_status = None
 total_words = 0
 _last_input_device: int | str | None = None  # track default input device for hot-swap detection
+_sound_cache: dict[str, tuple[np.ndarray, int]] = {}  # name -> (samples, sample_rate)
+_media_paused_by_us = False
 
 
 def show_log(n=20):
@@ -297,6 +327,20 @@ def load_stats():
 def ensure_dirs():
     BLURT_DIR.mkdir(exist_ok=True)
     AUDIO_DIR.mkdir(exist_ok=True)
+
+
+def _save_config(config: dict):
+    """Write settings to config.toml."""
+    ensure_dirs()
+    lines = []
+    for k, v in config.items():
+        if isinstance(v, bool):
+            lines.append(f"{k} = {'true' if v else 'false'}")
+        elif isinstance(v, str):
+            lines.append(f'{k} = "{v}"')
+        else:
+            lines.append(f"{k} = {v}")
+    CONFIG_PATH.write_text("\n".join(lines) + "\n")
 
 
 # --- Vocab ---
@@ -390,13 +434,6 @@ def _model_is_cached(repo_id: str) -> bool:
         return False
 
 
-def _play_ready_sound():
-    """Play the ready chime via macOS afplay (non-blocking)."""
-    sound_file = SOUNDS_DIR / "ready.mp3"
-    if sound_file.exists():
-        subprocess.Popen(["afplay", str(sound_file)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
 def load_model():
     """Lazy-load mlx-whisper on first use."""
     global whisper_pipe
@@ -435,7 +472,7 @@ def load_model():
                     without_timestamps=True,
                 )
                 whisper_pipe = mlx_whisper
-            _play_ready_sound()
+            _play_sound("ready")
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
             _start_keepalive()
 
@@ -475,6 +512,78 @@ def _start_keepalive():
     _keepalive_timer.start()
 
 
+def _play_sound(name):
+    """Play a pre-loaded sound via sounddevice (no subprocess fork)."""
+    entry = _sound_cache.get(name)
+    if entry is not None:
+        samples, sr = entry
+        try:
+            sd.play(samples, samplerate=sr, device=sd.default.device[1])
+        except Exception:
+            pass
+        return
+    # Fallback if sounds weren't pre-loaded
+    path = SOUNDS_DIR / f"{name}.mp3"
+    if path.exists():
+        subprocess.Popen(["afplay", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+_MR_PLAY = 0
+_MR_PAUSE = 1
+
+
+def _is_audio_active():
+    """Check if any audio is currently playing on the default output device."""
+    bin_path = BLURT_DIR / "is_audio_active"
+    if not bin_path.exists():
+        src_path = BLURT_DIR / "is_audio_active.swift"
+        try:
+            src_path.write_text(_IS_AUDIO_ACTIVE_SWIFT)
+            subprocess.run(
+                ["swiftc", "-O", "-o", str(bin_path), str(src_path)],
+                capture_output=True,
+                timeout=60,
+                check=True,
+            )
+        except Exception:
+            return True  # assume playing if we can't check
+        finally:
+            src_path.unlink(missing_ok=True)
+    try:
+        result = subprocess.run([str(bin_path)], capture_output=True, timeout=5)
+        return result.returncode == 0
+    except Exception:
+        return True  # assume playing if we can't check
+
+
+def _pause_media():
+    """Pause media playback if pause_media setting is enabled and audio is active."""
+    global _media_paused_by_us
+    if not _load_config().get("pause_media", True):
+        return
+    if _mr_lib is None:
+        return
+    if not _is_audio_active():
+        return
+    try:
+        _mr_lib.MRMediaRemoteSendCommand(_MR_PAUSE, None)
+        _media_paused_by_us = True
+    except Exception:
+        pass
+
+
+def _resume_media():
+    """Resume media playback if we previously paused it."""
+    global _media_paused_by_us
+    if not _media_paused_by_us:
+        return
+    try:
+        _mr_lib.MRMediaRemoteSendCommand(_MR_PLAY, None)
+    except Exception:
+        pass
+    _media_paused_by_us = False
+
+
 def audio_callback(indata, frames, time_info, status):
     if status:
         console.print(f"Audio: {status}", style="yellow")
@@ -503,6 +612,7 @@ def start_recording():
             return
         recording = True
         audio_buffer = []
+        _pause_media()
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -666,73 +776,78 @@ def stop_recording():
             stream.close()
             stream = None
 
-    if not audio_buffer:
-        return
+    try:
+        if not audio_buffer:
+            return
 
-    audio_data = np.concatenate(audio_buffer, axis=0).flatten()
+        audio_data = np.concatenate(audio_buffer, axis=0).flatten()
 
-    # Trim silence from start/end for faster transcription
-    audio_data = _vad_trim(audio_data, SAMPLE_RATE)
-    duration_s = round(len(audio_data) / SAMPLE_RATE, 2)
+        # Trim silence from start/end for faster transcription
+        audio_data = _vad_trim(audio_data, SAMPLE_RATE)
+        duration_s = round(len(audio_data) / SAMPLE_RATE, 2)
 
-    if duration_s < 0.5:
-        return
+        if duration_s < 0.5:
+            return
 
-    # Skip all-zero audio (CoreAudio bug on macOS Tahoe) or silence
-    if np.max(np.abs(audio_data)) == 0:
-        console.print(f"  [{C_REC}]Audio device returned silence — try: sudo killall coreaudiod[/{C_REC}]")
-        return
-    rms = np.sqrt(np.mean(audio_data**2))
-    if rms < 0.003:
-        return
+        # Skip all-zero audio (CoreAudio bug on macOS Tahoe) or silence
+        if np.max(np.abs(audio_data)) == 0:
+            console.print(f"  [{C_REC}]Audio device returned silence — try: sudo killall coreaudiod[/{C_REC}]")
+            return
+        rms = np.sqrt(np.mean(audio_data**2))
+        if rms < 0.003:
+            return
 
-    t0 = time.monotonic()
+        t0 = time.monotonic()
 
-    ts = datetime.now(timezone.utc)
-    wav_path = AUDIO_DIR / f"{ts.strftime('%Y%m%d_%H%M%S')}.wav"
-    save_wav(wav_path, audio_data)
+        ts = datetime.now(timezone.utc)
+        wav_path = AUDIO_DIR / f"{ts.strftime('%Y%m%d_%H%M%S')}.wav"
+        save_wav(wav_path, audio_data)
 
-    with console.status(f"  [{C_ACCENT}]Transcribing...[/{C_ACCENT}]"):
-        load_model()
-        transcribe_kwargs = dict(
-            path_or_hf_repo=MODEL,
-            language=_get_language(),
-            condition_on_previous_text=False,
-            temperature=0.0,
-            without_timestamps=True,
-        )
-        prompt = _vocab_prompt()
-        if prompt:
-            transcribe_kwargs["initial_prompt"] = prompt
-        with model_lock:
-            result = whisper_pipe.transcribe(audio_data, **transcribe_kwargs)
+        with console.status(f"  [{C_ACCENT}]Transcribing...[/{C_ACCENT}]"):
+            load_model()
+            transcribe_kwargs = dict(
+                path_or_hf_repo=MODEL,
+                language=_get_language(),
+                condition_on_previous_text=False,
+                temperature=0.0,
+                without_timestamps=True,
+            )
+            prompt = _vocab_prompt()
+            if prompt:
+                transcribe_kwargs["initial_prompt"] = prompt
+            with model_lock:
+                result = whisper_pipe.transcribe(audio_data, **transcribe_kwargs)
 
-    latency_ms = round((time.monotonic() - t0) * 1000)
+        latency_ms = round((time.monotonic() - t0) * 1000)
 
-    text = result["text"].strip()
-    segments = result.get("segments", [])
+        text = result["text"].strip()
+        segments = result.get("segments", [])
 
-    if not text or _is_hallucination(segments) or _is_prompt_echo(text, prompt):
-        return
+        if not text or _is_hallucination(segments) or _is_prompt_echo(text, prompt):
+            return
 
-    text = _resolve_file_refs(text)
+        text = _resolve_file_refs(text)
 
-    global total_words
-    word_count = len(text.split())
-    total_words += word_count
-    paste_transcription(text)
+        global total_words
+        word_count = len(text.split())
+        total_words += word_count
+        paste_transcription(text)
 
-    entry = {
-        "ts": ts.isoformat(),
-        "text": text,
-        "audio": str(wav_path),
-        "duration_s": duration_s,
-        "words": word_count,
-    }
-    with open(JSONL_PATH, "a") as f:
-        f.write(json.dumps(entry) + "\n")
-    preview = text[:60] + ("..." if len(text) > 60 else "")
-    console.print(f'  [{C_OK}]\u2713[/{C_OK}] "{preview}" [{C_DIM}]{latency_ms}ms[/{C_DIM}]')
+        entry = {
+            "ts": ts.isoformat(),
+            "text": text,
+            "audio": str(wav_path),
+            "duration_s": duration_s,
+            "words": word_count,
+        }
+        with open(JSONL_PATH, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+        preview = text[:60] + ("..." if len(text) > 60 else "")
+        console.print(f'  [{C_OK}]\u2713[/{C_OK}] "{preview}" [{C_DIM}]{latency_ms}ms[/{C_DIM}]')
+    finally:
+        if _media_paused_by_us:
+            time.sleep(1)
+        _resume_media()
 
 
 def save_wav(path: Path, audio: np.ndarray):
@@ -805,6 +920,7 @@ def on_press(key):
     pressed_keys.add(_normalize(key))
     if SHORTCUT.issubset(pressed_keys):
         if not recording:
+            _play_sound("on")
             threading.Thread(target=start_recording, daemon=True).start()
 
 
@@ -1033,6 +1149,7 @@ def show_help():
     console.print("    blurt add <word/phrase>     add word to vocab for better recognition")
     console.print("    blurt rm <word/phrase>      remove word from vocab")
     console.print("    blurt vocab                 list vocab words")
+    console.print("    blurt pause [on|off]        toggle media pause during recording")
     console.print("    blurt log [-n N]            show recent transcriptions (default 20)")
     console.print("    blurt doctor                run health checks")
     console.print("    blurt upgrade|update        check for updates and upgrade")
@@ -1077,6 +1194,19 @@ def main():
 
     if len(sys.argv) >= 2 and sys.argv[1] in ("upgrade", "update"):
         cmd_upgrade()
+        return
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "pause":
+        config = _load_config()
+        if len(sys.argv) >= 3 and sys.argv[2] in ("on", "off"):
+            config["pause_media"] = sys.argv[2] == "on"
+            _save_config(config)
+            state = "on" if config["pause_media"] else "off"
+            console.print(f"  [{C_OK}]\u2713[/{C_OK}] Pause media: {state}")
+        else:
+            state = "on" if config.get("pause_media", False) else "off"
+            console.print(f"  Pause media: [{C_ACCENT}]{state}[/{C_ACCENT}]")
+            console.print(f"  [{C_DIM}]Usage: blurt pause on|off[/{C_DIM}]")
         return
 
     if len(sys.argv) >= 2 and not sys.argv[1].startswith("-"):
