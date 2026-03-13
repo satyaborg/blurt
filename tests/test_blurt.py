@@ -508,6 +508,7 @@ def test_save_config(tmp_path, monkeypatch):
     cfg = tmp_path / "config.toml"
     monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
     monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
     blurt._save_config({"pause_media": True})
     content = cfg.read_text()
     assert "pause_media = true" in content
