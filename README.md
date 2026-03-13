@@ -21,10 +21,17 @@ On-device voice-to-text for macOS. Hold right **⌘**, speak, release - your wor
 ## Install
 
 ```bash
+brew tap satyaborg/blurt
+brew install blurt
+```
+
+Or via [pipx](https://pipx.pypa.io/):
+
+```bash
 pipx install blurt
 ```
 
-> Requires [pipx](https://pipx.pypa.io/) (`brew install pipx`) and macOS with Apple Silicon.
+> Requires macOS with Apple Silicon.
 
 First run downloads the Whisper model (~1.6 GB, one-time). macOS will prompt for **Microphone** and **Accessibility** access (System Settings → Privacy & Security).
 
