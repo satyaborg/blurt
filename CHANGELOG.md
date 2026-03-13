@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.2](https://github.com/satyaborg/blurt/releases/tag/v0.8.2) — 2026-03-13
+
+### Bug fixes
+
+- Fix release.sh tap update race condition and dead code ([6fcd1f6](https://github.com/satyaborg/blurt/commit/6fcd1f63338e9887b0b3211fa631952a2d5fc782))
 ## [0.8.1](https://github.com/satyaborg/blurt/releases/tag/v0.8.1) — 2026-03-13
 
 ### Features
 
 - Add Homebrew tap as primary install method ([a9ac40f](https://github.com/satyaborg/blurt/commit/a9ac40fc131d194727a618325a1bd2100bf6310e))
+
+### Other
+
+- changelog v0.8.1 ([bb7a615](https://github.com/satyaborg/blurt/commit/bb7a6156e913f3ca4f5eafb2b2a9ab0ca307f942))
 ## [0.8.0](https://github.com/satyaborg/blurt/releases/tag/v0.8.0) — 2026-03-13
 
 ### Bug fixes
