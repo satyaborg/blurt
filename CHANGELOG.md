@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.1](https://github.com/satyaborg/blurt/releases/tag/v0.8.1) — 2026-03-13
+
+### Features
+
+- Add Homebrew tap as primary install method ([a9ac40f](https://github.com/satyaborg/blurt/commit/a9ac40fc131d194727a618325a1bd2100bf6310e))
 ## [0.8.0](https://github.com/satyaborg/blurt/releases/tag/v0.8.0) — 2026-03-13
 
 ### Bug fixes
@@ -11,6 +16,7 @@ All notable changes to this project will be documented in this file.
 
 - feat: pause/resume media during recording ([9204f0d](https://github.com/satyaborg/blurt/commit/9204f0d0ba6cfcf46f86bcbae9d3a5398e5749c1))
 - Clean up media pause feature and enable by default ([d926c3b](https://github.com/satyaborg/blurt/commit/d926c3b8f41d85294b38030b3f74e229f8a6e158))
+- changelog v0.8.0 ([3f8389d](https://github.com/satyaborg/blurt/commit/3f8389d3020cf86a793694efa3baad853e83bc3a))
 ## [0.7.7](https://github.com/satyaborg/blurt/releases/tag/v0.7.7) — 2026-03-13
 
 ### Features
