@@ -1,11 +1,25 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.0](https://github.com/satyaborg/blurt/releases/tag/v0.8.0) — 2026-03-13
+
+### Bug fixes
+
+- Fix test_save_config missing AUDIO_DIR monkeypatch ([d81a76d](https://github.com/satyaborg/blurt/commit/d81a76deb1a529f0dfb0c46d47e393180b9a35a5))
+
+### Other
+
+- feat: pause/resume media during recording ([9204f0d](https://github.com/satyaborg/blurt/commit/9204f0d0ba6cfcf46f86bcbae9d3a5398e5749c1))
+- Clean up media pause feature and enable by default ([d926c3b](https://github.com/satyaborg/blurt/commit/d926c3b8f41d85294b38030b3f74e229f8a6e158))
 ## [0.7.7](https://github.com/satyaborg/blurt/releases/tag/v0.7.7) — 2026-03-13
 
 ### Features
 
 - Add ready sound chime on model load ([b01a5f7](https://github.com/satyaborg/blurt/commit/b01a5f78012f86daaf8e181ce6d1463f7c28a843))
+
+### Other
+
+- changelog v0.7.7 ([57fcb79](https://github.com/satyaborg/blurt/commit/57fcb79aef4299891eabf54dc31e9d62f3150e44))
 ## [0.7.6](https://github.com/satyaborg/blurt/releases/tag/v0.7.6) — 2026-03-12
 
 ### Other
