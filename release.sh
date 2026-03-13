@@ -24,10 +24,16 @@ echo "Pushed $tag — PyPI publish will start shortly."
 # Update Homebrew tap
 TAP_DIR="${TAP_DIR:-../homebrew-blurt}"
 if [ -d "$TAP_DIR" ]; then
+  # Wait for GitHub to generate the tarball
+  echo "Waiting for GitHub tarball..."
+  for i in $(seq 1 10); do
+    status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/satyaborg/blurt/archive/refs/tags/$tag.tar.gz")
+    [ "$status" = "200" ] || [ "$status" = "302" ] && break
+    sleep 3
+  done
   new_sha=$(curl -sL "https://github.com/satyaborg/blurt/archive/refs/tags/$tag.tar.gz" | shasum -a 256 | cut -d' ' -f1)
   sed -i '' "s|/tags/v[0-9.]*\.tar\.gz|/tags/$tag.tar.gz|" "$TAP_DIR/Formula/blurt.rb"
   sed -i '' "s/sha256 \"[a-f0-9]*\"/sha256 \"$new_sha\"/" "$TAP_DIR/Formula/blurt.rb"
-  sed -i '' "s/blurt==[0-9.]*/blurt==$1/" "$TAP_DIR/Formula/blurt.rb"
   (cd "$TAP_DIR" && git add -A && git commit -m "blurt $tag" && git push origin main)
   echo "Homebrew tap updated."
 else
