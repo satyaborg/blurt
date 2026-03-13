@@ -81,6 +81,7 @@ JSONL_PATH = BLURT_DIR / "blurts.jsonl"
 AUDIO_DIR = BLURT_DIR / "audio"
 VOCAB_PATH = BLURT_DIR / "vocab.txt"
 CONFIG_PATH = BLURT_DIR / "config.toml"
+SOUNDS_DIR = Path(__file__).parent / "sounds"
 
 # --- Supported languages (Whisper large-v3-turbo) ---
 SUPPORTED_LANGUAGES = {
@@ -389,6 +390,13 @@ def _model_is_cached(repo_id: str) -> bool:
         return False
 
 
+def _play_ready_sound():
+    """Play the ready chime via macOS afplay (non-blocking)."""
+    sound_file = SOUNDS_DIR / "ready.mp3"
+    if sound_file.exists():
+        subprocess.Popen(["afplay", str(sound_file)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def load_model():
     """Lazy-load mlx-whisper on first use."""
     global whisper_pipe
@@ -427,6 +435,7 @@ def load_model():
                     without_timestamps=True,
                 )
                 whisper_pipe = mlx_whisper
+            _play_ready_sound()
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
             _start_keepalive()
 
