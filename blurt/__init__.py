@@ -104,6 +104,9 @@ MODEL = "mlx-community/whisper-large-v3-turbo"  # Best accuracy. Alt: "mlx-commu
 SHORTCUT = {keyboard.Key.cmd_r}  # Right Cmd only. Alt: {keyboard.Key.cmd, keyboard.Key.shift}
 SAMPLE_RATE = 16000
 CHANNELS = 1
+RECORDING_TAIL_CAPTURE_S = 0.3
+VAD_LEADING_MARGIN_FRAMES = 2
+VAD_TRAILING_MARGIN_FRAMES = 8
 BLURT_DIR = Path.home() / ".blurt"
 JSONL_PATH = BLURT_DIR / "blurts.jsonl"
 AUDIO_DIR = BLURT_DIR / "audio"
@@ -255,6 +258,8 @@ def _get_language() -> str:
 
 # --- State ---
 recording = False
+record_requested = False
+start_pending = False
 audio_buffer = []
 pressed_keys = set()
 stream = None
@@ -263,9 +268,10 @@ model_lock = threading.Lock()
 whisper_pipe = None
 rec_status = None
 total_words = 0
+recording_session_id = 0
 _last_input_device: int | str | None = None  # track default input device for hot-swap detection
 _sound_cache: dict[str, tuple[np.ndarray, int]] = {}  # name -> (samples, sample_rate)
-_media_paused_by_us = False
+_media_paused_session_id: int | None = None
 
 
 def show_log(n=20):
@@ -556,9 +562,9 @@ def _is_audio_active():
         return True  # assume playing if we can't check
 
 
-def _pause_media():
+def _pause_media(session_id: int):
     """Pause media playback if pause_media setting is enabled and audio is active."""
-    global _media_paused_by_us
+    global _media_paused_session_id
     if not _load_config().get("pause_media", True):
         return
     if _mr_lib is None:
@@ -567,21 +573,21 @@ def _pause_media():
         return
     try:
         _mr_lib.MRMediaRemoteSendCommand(_MR_PAUSE, None)
-        _media_paused_by_us = True
+        _media_paused_session_id = session_id
     except Exception:
         pass
 
 
-def _resume_media():
+def _resume_media(session_id: int):
     """Resume media playback if we previously paused it."""
-    global _media_paused_by_us
-    if not _media_paused_by_us:
+    global _media_paused_session_id
+    if _media_paused_session_id != session_id:
         return
     try:
         _mr_lib.MRMediaRemoteSendCommand(_MR_PLAY, None)
     except Exception:
         pass
-    _media_paused_by_us = False
+    _media_paused_session_id = None
 
 
 def audio_callback(indata, frames, time_info, status):
@@ -606,13 +612,12 @@ def _refresh_audio_device():
 
 
 def start_recording():
-    global recording, stream, audio_buffer, rec_status
+    global recording, record_requested, start_pending, stream, audio_buffer, rec_status, recording_session_id
     with lock:
-        if recording:
+        if recording or not record_requested:
+            start_pending = False
             return
-        recording = True
         audio_buffer = []
-        _pause_media()
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -637,10 +642,24 @@ def start_recording():
                     time.sleep(1)
                     lock.acquire()
                 else:
-                    recording = False
+                    start_pending = False
+                    record_requested = False
                     console.print(f"  [{C_REC}]Audio device unavailable[/{C_REC}]")
                     console.print(f"  [{C_DIM}]try: sudo killall coreaudiod — or replug/switch input[/{C_DIM}]")
                     return
+        if not record_requested:
+            start_pending = False
+            if stream:
+                stream.stop()
+                stream.close()
+                stream = None
+            return
+        recording = True
+        start_pending = False
+        recording_session_id += 1
+        session_id = recording_session_id
+        # Pause media after stream is running — audio captures immediately, no start delay
+        _pause_media(session_id)
         rec_status = console.status(f"  [{C_REC}]Listening...[/{C_REC}]")
         rec_status.start()
 
@@ -743,13 +762,14 @@ def _vad_trim(audio: np.ndarray, sr: int, frame_ms: int = 30, energy_threshold: 
     """Trim leading and trailing silence using energy-based voice activity detection.
 
     Splits audio into frames, computes RMS energy per frame, and strips silent
-    frames from the start and end. Keeps a small margin (2 frames) for natural speech.
+    frames from the start and end. Keeps a small leading margin and a larger
+    trailing margin so hotkey release doesn't clip the last syllable.
     """
     frame_len = int(sr * frame_ms / 1000)
     if len(audio) < frame_len:
         return audio
 
-    n_frames = len(audio) // frame_len
+    n_frames = (len(audio) + frame_len - 1) // frame_len
     energies = np.array([np.sqrt(np.mean(audio[i * frame_len : (i + 1) * frame_len] ** 2)) for i in range(n_frames)])
 
     # Find first and last frames above threshold
@@ -757,21 +777,25 @@ def _vad_trim(audio: np.ndarray, sr: int, frame_ms: int = 30, energy_threshold: 
     if len(active) == 0:
         return audio  # all silence — let downstream handle it
 
-    start = max(0, active[0] - 2) * frame_len
-    end = min(n_frames, active[-1] + 3) * frame_len  # +3 for margin (2 frames after last active)
+    start = max(0, active[0] - VAD_LEADING_MARGIN_FRAMES) * frame_len
+    end = min(len(audio), (active[-1] + 1 + VAD_TRAILING_MARGIN_FRAMES) * frame_len)
     return audio[start:end]
 
 
 def stop_recording():
-    global recording, stream, rec_status
+    global recording, record_requested, stream, rec_status
     with lock:
         if not recording:
             return
         recording = False
+        record_requested = False
+        session_id = recording_session_id
         if rec_status:
             rec_status.stop()
             rec_status = None
         if stream:
+            # Drain: let the stream capture any trailing audio still in OS/PortAudio buffers
+            time.sleep(RECORDING_TAIL_CAPTURE_S)
             stream.stop()
             stream.close()
             stream = None
@@ -845,9 +869,9 @@ def stop_recording():
         preview = text[:60] + ("..." if len(text) > 60 else "")
         console.print(f'  [{C_OK}]\u2713[/{C_OK}] "{preview}" [{C_DIM}]{latency_ms}ms[/{C_DIM}]')
     finally:
-        if _media_paused_by_us:
+        if _media_paused_session_id == session_id:
             time.sleep(1)
-        _resume_media()
+        _resume_media(session_id)
 
 
 def save_wav(path: Path, audio: np.ndarray):
@@ -917,17 +941,31 @@ def _normalize(key):
 
 
 def on_press(key):
+    global record_requested, start_pending
     pressed_keys.add(_normalize(key))
     if SHORTCUT.issubset(pressed_keys):
-        if not recording:
+        should_start = False
+        with lock:
+            if not record_requested:
+                record_requested = True
+            if not recording and not start_pending:
+                start_pending = True
+                should_start = True
+        if should_start:
             _play_sound("on")
             threading.Thread(target=start_recording, daemon=True).start()
 
 
 def on_release(key):
+    global record_requested
     pressed_keys.discard(_normalize(key))
-    if recording and not SHORTCUT.issubset(pressed_keys):
-        threading.Thread(target=stop_recording, daemon=True).start()
+    if not SHORTCUT.issubset(pressed_keys):
+        should_stop = False
+        with lock:
+            record_requested = False
+            should_stop = recording
+        if should_stop:
+            threading.Thread(target=stop_recording, daemon=True).start()
 
 
 def _check_update_bg():
