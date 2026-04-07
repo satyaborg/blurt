@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.3](https://github.com/satyaborg/blurt/releases/tag/v0.8.3) — 2026-04-07
+
+### Bug fixes
+
+- Fix audio clipping and start/stop race in recording flow ([4a2a9c1](https://github.com/satyaborg/blurt/commit/4a2a9c18078f332a1607d2d1fbf4257b527e66cb))
 ## [0.8.2](https://github.com/satyaborg/blurt/releases/tag/v0.8.2) — 2026-03-13
 
 ### Bug fixes
 
 - Fix release.sh tap update race condition and dead code ([6fcd1f6](https://github.com/satyaborg/blurt/commit/6fcd1f63338e9887b0b3211fa631952a2d5fc782))
+
+### Other
+
+- changelog v0.8.2 ([1335075](https://github.com/satyaborg/blurt/commit/13350753cbe716d46c22587cbf130f3a2c271c3b))
 ## [0.8.1](https://github.com/satyaborg/blurt/releases/tag/v0.8.1) — 2026-03-13
 
 ### Features
