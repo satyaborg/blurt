@@ -536,6 +536,19 @@ def test_vad_trim_removes_trailing_silence():
     assert len(trimmed) < len(audio)
 
 
+def test_vad_trim_keeps_low_energy_trailing_speech():
+    sr = 16000
+    frame_len = int(sr * 30 / 1000)
+    speech = np.full(frame_len * 10, 0.1, dtype=np.float32)
+    soft_tail = np.full(frame_len * 8, 0.004, dtype=np.float32)
+    silence = np.zeros(frame_len * 10, dtype=np.float32)
+    audio = np.concatenate([speech, soft_tail, silence])
+
+    trimmed = blurt._vad_trim(audio, sr)
+
+    assert len(trimmed) >= len(speech) + len(soft_tail)
+
+
 def test_vad_trim_preserves_speech_only():
     sr = 16000
     speech = np.random.randn(sr).astype(np.float32) * 0.1
@@ -566,12 +579,12 @@ def test_pause_media_sends_command_when_enabled(monkeypatch):
     calls = []
     fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
     monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
-    monkeypatch.setattr(blurt, "_media_paused_by_us", False)
+    monkeypatch.setattr(blurt, "_media_paused_session_id", None)
     monkeypatch.setattr(blurt, "_load_config", lambda: {"pause_media": True})
     monkeypatch.setattr(blurt, "_is_audio_active", lambda: True)
-    blurt._pause_media()
+    blurt._pause_media(7)
     assert calls == [blurt._MR_PAUSE]
-    assert blurt._media_paused_by_us is True
+    assert blurt._media_paused_session_id == 7
 
 
 def test_pause_media_noop_when_disabled(monkeypatch):
@@ -579,20 +592,20 @@ def test_pause_media_noop_when_disabled(monkeypatch):
     calls = []
     fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
     monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
-    monkeypatch.setattr(blurt, "_media_paused_by_us", False)
+    monkeypatch.setattr(blurt, "_media_paused_session_id", None)
     monkeypatch.setattr(blurt, "_load_config", lambda: {"pause_media": False})
-    blurt._pause_media()
+    blurt._pause_media(7)
     assert calls == []
-    assert blurt._media_paused_by_us is False
+    assert blurt._media_paused_session_id is None
 
 
 def test_pause_media_noop_when_no_framework(monkeypatch):
     """Should silently handle missing MediaRemote framework."""
     monkeypatch.setattr(blurt, "_mr_lib", None)
-    monkeypatch.setattr(blurt, "_media_paused_by_us", False)
+    monkeypatch.setattr(blurt, "_media_paused_session_id", None)
     monkeypatch.setattr(blurt, "_load_config", lambda: {"pause_media": True})
-    blurt._pause_media()  # Should not raise
-    assert blurt._media_paused_by_us is False
+    blurt._pause_media(7)  # Should not raise
+    assert blurt._media_paused_session_id is None
 
 
 def test_resume_media_sends_play_when_paused(monkeypatch):
@@ -600,10 +613,10 @@ def test_resume_media_sends_play_when_paused(monkeypatch):
     calls = []
     fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
     monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
-    monkeypatch.setattr(blurt, "_media_paused_by_us", True)
-    blurt._resume_media()
+    monkeypatch.setattr(blurt, "_media_paused_session_id", 7)
+    blurt._resume_media(7)
     assert calls == [blurt._MR_PLAY]
-    assert blurt._media_paused_by_us is False
+    assert blurt._media_paused_session_id is None
 
 
 def test_resume_media_noop_when_not_paused(monkeypatch):
@@ -611,9 +624,21 @@ def test_resume_media_noop_when_not_paused(monkeypatch):
     calls = []
     fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
     monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
-    monkeypatch.setattr(blurt, "_media_paused_by_us", False)
-    blurt._resume_media()
+    monkeypatch.setattr(blurt, "_media_paused_session_id", None)
+    blurt._resume_media(7)
     assert calls == []
+
+
+def test_resume_media_noop_for_different_session(monkeypatch):
+    calls = []
+    fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
+    monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
+    monkeypatch.setattr(blurt, "_media_paused_session_id", 8)
+
+    blurt._resume_media(7)
+
+    assert calls == []
+    assert blurt._media_paused_session_id == 8
 
 
 # --- CLI: blurt pause ---
@@ -695,10 +720,13 @@ def test_doctor_subcommand(monkeypatch, capsys):
 def test_start_recording_pauses_media(monkeypatch):
     """start_recording should call _pause_media."""
     paused = []
-    monkeypatch.setattr(blurt, "_pause_media", lambda **kw: paused.append(True))
+    monkeypatch.setattr(blurt, "_pause_media", lambda session_id: paused.append(session_id))
     monkeypatch.setattr(blurt, "recording", False)
+    monkeypatch.setattr(blurt, "record_requested", True)
+    monkeypatch.setattr(blurt, "start_pending", True)
     monkeypatch.setattr(blurt, "audio_buffer", [])
     monkeypatch.setattr(blurt, "rec_status", None)
+    monkeypatch.setattr(blurt, "recording_session_id", 0)
 
     class FakeStream:
         def start(self):
@@ -712,7 +740,7 @@ def test_start_recording_pauses_media(monkeypatch):
     )
 
     blurt.start_recording()
-    assert paused == [True]
+    assert paused == [1]
 
     # Cleanup
     monkeypatch.setattr(blurt, "recording", False)
@@ -721,12 +749,108 @@ def test_start_recording_pauses_media(monkeypatch):
 def test_stop_recording_resumes_media(monkeypatch):
     """stop_recording should call _resume_media after closing stream."""
     resumed = []
-    monkeypatch.setattr(blurt, "_resume_media", lambda: resumed.append(True))
+    monkeypatch.setattr(blurt, "_resume_media", lambda session_id: resumed.append(session_id))
     monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "recording_session_id", 3)
     monkeypatch.setattr(blurt, "stream", type("S", (), {"stop": lambda s: None, "close": lambda s: None})())
     monkeypatch.setattr(blurt, "rec_status", type("R", (), {"stop": lambda s: None})())
     monkeypatch.setattr(blurt, "audio_buffer", [])
-    monkeypatch.setattr(blurt, "_media_paused_by_us", False)
+    monkeypatch.setattr(blurt, "_media_paused_session_id", None)
 
     blurt.stop_recording()
-    assert resumed == [True]
+    assert resumed == [3]
+
+
+def test_stop_recording_waits_for_trailing_audio(monkeypatch):
+    sleeps = []
+    stopped = []
+    closed = []
+
+    monkeypatch.setattr(blurt.time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(blurt, "_resume_media", lambda session_id: None)
+    monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "recording_session_id", 5)
+    monkeypatch.setattr(
+        blurt,
+        "stream",
+        type("S", (), {"stop": lambda s: stopped.append(True), "close": lambda s: closed.append(True)})(),
+    )
+    monkeypatch.setattr(blurt, "rec_status", type("R", (), {"stop": lambda s: None})())
+    monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "_media_paused_session_id", None)
+
+    blurt.stop_recording()
+
+    assert sleeps == [blurt.RECORDING_TAIL_CAPTURE_S]
+    assert stopped == [True]
+    assert closed == [True]
+
+
+def test_stop_recording_does_not_resume_newer_media_session(monkeypatch):
+    calls = []
+    fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
+    monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
+    monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "recording_session_id", 5)
+    monkeypatch.setattr(blurt, "stream", type("S", (), {"stop": lambda s: None, "close": lambda s: None})())
+    monkeypatch.setattr(blurt, "rec_status", type("R", (), {"stop": lambda s: None})())
+    monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "_media_paused_session_id", 6)
+
+    blurt.stop_recording()
+
+    assert calls == []
+    assert blurt._media_paused_session_id == 6
+
+
+def test_on_release_cancels_pending_start(monkeypatch):
+    spawned = []
+    stream_created = []
+    monkeypatch.setattr(blurt, "pressed_keys", set())
+    monkeypatch.setattr(blurt, "recording", False)
+    monkeypatch.setattr(blurt, "record_requested", False)
+    monkeypatch.setattr(blurt, "start_pending", False)
+    monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "rec_status", None)
+    monkeypatch.setattr(blurt, "stream", None)
+    monkeypatch.setattr(blurt, "_play_sound", lambda name: None)
+
+    class FakeThread:
+        def __init__(self, target=None, daemon=None):
+            self.target = target
+            spawned.append(self)
+
+        def start(self):
+            pass
+
+    class FakeStream:
+        def start(self):
+            stream_created.append(True)
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
+    monkeypatch.setattr(blurt.sd, "InputStream", lambda **kw: FakeStream())
+
+    blurt.on_press(blurt.keyboard.Key.cmd_r)
+    blurt.on_release(blurt.keyboard.Key.cmd_r)
+    spawned[0].target()
+
+    assert stream_created == []
+    assert blurt.recording is False
+    assert blurt.record_requested is False
+    assert blurt.start_pending is False
+
+
+def test_vad_trim_preserves_partial_tail_frame():
+    sr = 16000
+    frame_len = int(sr * 30 / 1000)
+    speech = np.full(frame_len * 2 + 123, 0.1, dtype=np.float32)
+
+    trimmed = blurt._vad_trim(speech, sr)
+
+    assert len(trimmed) == len(speech)
