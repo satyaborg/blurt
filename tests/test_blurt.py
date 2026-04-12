@@ -64,6 +64,12 @@ def test_prompt_echo_no_prompt():
     assert blurt._is_prompt_echo("some text", None) is False
 
 
+def test_prompt_echo_example_sentence():
+    prompt = "open __init__.py and update the function. add a test in test_app.py and run pytest."
+    text = "open __init__.py and update the function add a test in test_app.py and run pytest"
+    assert blurt._is_prompt_echo(text, prompt) is True
+
+
 # --- load_stats ---
 
 
@@ -142,6 +148,28 @@ def test_version_flag(capsys):
         blurt.main()
     captured = capsys.readouterr()
     assert "blurt" in captured.out
+
+
+def test_version_flag_takes_priority_over_mode_flag(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", "--fast", "--version"]):
+        blurt.main()
+    captured = capsys.readouterr()
+    assert "blurt" in captured.out
+    assert not (tmp_path / "config.json").exists()
+
+
+def test_help_takes_priority_over_mode_flag(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", "--accurate", "help"]):
+        blurt.main()
+    captured = capsys.readouterr()
+    assert "Usage:" in captured.out
+    assert not (tmp_path / "config.json").exists()
 
 
 def test_log_subcommand(tmp_path, monkeypatch, capsys):
@@ -318,6 +346,7 @@ def test_vocab_prompt_includes_file_basenames(tmp_path, monkeypatch):
     assert "MLX" in prompt
     assert "cliff.toml" in prompt
     assert "__init__.py" in prompt
+    assert "pytest" in prompt
 
 
 def test_vocab_prompt_file_only_no_vocab(tmp_path, monkeypatch):
@@ -325,7 +354,8 @@ def test_vocab_prompt_file_only_no_vocab(tmp_path, monkeypatch):
     monkeypatch.setattr(blurt, "_file_index", ["README.md"])
     monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
     prompt = blurt._vocab_prompt()
-    assert prompt == "README.md"
+    assert "README.md" in prompt
+    assert "pytest" in prompt
 
 
 def test_vocab_prompt_no_vocab_no_files(tmp_path, monkeypatch):
@@ -359,6 +389,13 @@ def test_resolve_case_insensitive(monkeypatch):
     assert "@README.md" in result
 
 
+def test_resolve_spoken_dot_form(monkeypatch):
+    monkeypatch.setattr(blurt, "_file_index", ["tests/test_blurt.py"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    result = blurt._resolve_file_refs("check test blurt dot py please")
+    assert "@tests/test_blurt.py" in result
+
+
 def test_resolve_no_match_passthrough(monkeypatch):
     monkeypatch.setattr(blurt, "_file_index", ["blurt/__init__.py"])
     monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
@@ -378,6 +415,13 @@ def test_resolve_preserves_surrounding_text(monkeypatch):
     monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
     result = blurt._resolve_file_refs("what about CLAUDE.md and the config")
     assert result == "what about @CLAUDE.md and the config"
+
+
+def test_resolve_does_not_rewrite_existing_full_path(monkeypatch):
+    monkeypatch.setattr(blurt, "_file_index", ["tests/test_blurt.py"])
+    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
+    result = blurt._resolve_file_refs("check tests/test_blurt.py")
+    assert result == "check tests/test_blurt.py"
 
 
 # --- paste_transcription ---
@@ -436,6 +480,36 @@ def test_paste_gives_up_after_two_failures(monkeypatch, capsys):
     assert len(set_calls) == 1  # only the initial set, no restore
 
 
+def test_paste_restores_clipboard_in_background(monkeypatch):
+    thread_targets = []
+
+    class FakeThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self.target = target
+            self.args = args
+            thread_targets.append(self)
+
+        def start(self):
+            self.target(*self.args)
+
+    class OkResult:
+        returncode = 0
+        stdout = b""
+        stderr = ""
+
+    monkeypatch.setattr(blurt.subprocess, "run", lambda *a, **kw: OkResult())
+    monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
+    monkeypatch.setattr(blurt, "_get_clipboard", lambda: b"prev")
+    set_calls = []
+    monkeypatch.setattr(blurt, "_set_clipboard", lambda data: set_calls.append(data))
+    monkeypatch.setattr(blurt.time, "sleep", lambda _: None)
+
+    blurt.paste_transcription("hello")
+
+    assert len(thread_targets) == 1
+    assert set_calls == [b"hello", b"prev"]
+
+
 # --- _check_accessibility ---
 
 
@@ -470,48 +544,96 @@ def test_check_accessibility_silent_on_success(monkeypatch, capsys):
 # --- Config / language ---
 
 
+def _set_config_paths(monkeypatch, tmp_path):
+    monkeypatch.setattr(blurt, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(blurt, "LEGACY_CONFIG_PATH", tmp_path / "config.toml")
+
+
 def test_load_config_missing_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(blurt, "CONFIG_PATH", tmp_path / "missing.toml")
-    assert blurt._load_config() == {}
+    _set_config_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    config = blurt._load_config()
+    assert config["model_mode"] == "fast"
+    assert config["language"] == "en"
+    assert config["pause_media"] is True
+    assert (tmp_path / "config.json").exists()
 
 
-def test_load_config_simple_keyval(tmp_path, monkeypatch):
-    cfg = tmp_path / "config.toml"
-    cfg.write_text('language = "es"\n')
-    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+def test_load_config_json(tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"language": "es"}\n')
     config = blurt._load_config()
     assert config["language"] == "es"
 
 
+def test_load_config_legacy_toml_fallback(tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('language = "es"\n')
+    config = blurt._load_config()
+    assert config["language"] == "es"
+    assert config["model_mode"] == "accurate"
+    assert json.loads((tmp_path / "config.json").read_text()) == {
+        "language": "es",
+        "model_mode": "accurate",
+        "pause_media": True,
+    }
+
+
 def test_get_language_default(tmp_path, monkeypatch):
-    monkeypatch.setattr(blurt, "CONFIG_PATH", tmp_path / "missing.toml")
+    _set_config_paths(monkeypatch, tmp_path)
     assert blurt._get_language() == "en"
 
 
 def test_get_language_configured(tmp_path, monkeypatch):
-    cfg = tmp_path / "config.toml"
-    cfg.write_text('language = "ja"\n')
-    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    _set_config_paths(monkeypatch, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"language": "ja"}\n')
     assert blurt._get_language() == "ja"
 
 
 def test_get_language_invalid_falls_back(tmp_path, monkeypatch, capsys):
-    cfg = tmp_path / "config.toml"
-    cfg.write_text('language = "zz"\n')
-    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    _set_config_paths(monkeypatch, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"language": "zz"}\n')
     assert blurt._get_language() == "en"
     captured = capsys.readouterr()
     assert "Unknown language" in captured.out
 
 
+def test_get_model_mode_default(tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    assert blurt._get_model_mode() == "fast"
+
+
+def test_get_model_mode_configured(tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"model_mode": "accurate"}\n')
+    assert blurt._get_model_mode() == "accurate"
+    assert blurt._get_model_repo() == blurt.MODEL_MODES["accurate"]["repo"]
+
+
+def test_get_model_mode_invalid_falls_back(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"model_mode": "turbo"}\n')
+    assert blurt._get_model_mode() == "fast"
+    captured = capsys.readouterr()
+    assert "Unknown model_mode" in captured.out
+
+
 def test_save_config(tmp_path, monkeypatch):
-    cfg = tmp_path / "config.toml"
-    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    _set_config_paths(monkeypatch, tmp_path)
+    cfg = tmp_path / "config.json"
     monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
     monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
     blurt._save_config({"pause_media": True})
-    content = cfg.read_text()
-    assert "pause_media = true" in content
+    assert json.loads(cfg.read_text()) == {"pause_media": True}
 
 
 # --- VAD trimming ---
@@ -645,7 +767,7 @@ def test_resume_media_noop_for_different_session(monkeypatch):
 
 
 def test_pause_on(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(blurt, "CONFIG_PATH", tmp_path / "config.toml")
+    _set_config_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
     monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
     with patch.object(sys, "argv", ["blurt", "pause", "on"]):
@@ -656,9 +778,9 @@ def test_pause_on(tmp_path, monkeypatch, capsys):
 
 
 def test_pause_off(tmp_path, monkeypatch, capsys):
-    cfg = tmp_path / "config.toml"
-    cfg.write_text("pause_media = true\n")
-    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    _set_config_paths(monkeypatch, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"pause_media": true}\n')
     monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
     monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
     with patch.object(sys, "argv", ["blurt", "pause", "off"]):
@@ -669,13 +791,64 @@ def test_pause_off(tmp_path, monkeypatch, capsys):
 
 
 def test_pause_status(tmp_path, monkeypatch, capsys):
-    cfg = tmp_path / "config.toml"
-    cfg.write_text("pause_media = true\n")
-    monkeypatch.setattr(blurt, "CONFIG_PATH", cfg)
+    _set_config_paths(monkeypatch, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"pause_media": true}\n')
     with patch.object(sys, "argv", ["blurt", "pause"]):
         blurt.main()
     captured = capsys.readouterr()
     assert "on" in captured.out.lower()
+
+
+def test_mode_fast(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", "mode", "fast"]):
+        blurt.main()
+    assert blurt._load_config().get("model_mode") == "fast"
+    captured = capsys.readouterr()
+    assert "Mode: fast" in captured.out
+
+
+def test_mode_status(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"model_mode": "fast"}\n')
+    with patch.object(sys, "argv", ["blurt", "mode"]):
+        blurt.main()
+    captured = capsys.readouterr()
+    assert "Mode:" in captured.out
+    assert "fast" in captured.out
+
+
+def test_mode_invalid_exits(tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    with patch.object(sys, "argv", ["blurt", "mode", "turbo"]):
+        with pytest.raises(SystemExit, match="1"):
+            blurt.main()
+
+
+def test_fast_flag_writes_config(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", "--fast"]):
+        blurt.main()
+    assert blurt._load_config().get("model_mode") == "fast"
+    captured = capsys.readouterr()
+    assert "Mode: fast" in captured.out
+
+
+def test_accurate_flag_writes_config(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", "--accurate"]):
+        blurt.main()
+    assert blurt._load_config().get("model_mode") == "accurate"
+    captured = capsys.readouterr()
+    assert "Mode: accurate" in captured.out
 
 
 # --- doctor CLI ---

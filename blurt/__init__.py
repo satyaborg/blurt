@@ -100,7 +100,17 @@ def _apply_theme(name=None):
 _apply_theme()
 
 # --- Config ---
-MODEL = "mlx-community/whisper-large-v3-turbo"  # Best accuracy. Alt: "mlx-community/whisper-base-mlx" for speed
+MODEL_MODES = {
+    "accurate": {
+        "repo": "mlx-community/whisper-large-v3-turbo",
+        "label": "best accuracy",
+    },
+    "fast": {
+        "repo": "mlx-community/whisper-base-mlx",
+        "label": "lower latency",
+    },
+}
+DEFAULT_MODEL_MODE = "fast"
 SHORTCUT = {keyboard.Key.cmd_r}  # Right Cmd only. Alt: {keyboard.Key.cmd, keyboard.Key.shift}
 SAMPLE_RATE = 16000
 CHANNELS = 1
@@ -112,7 +122,32 @@ JSONL_PATH = BLURT_DIR / "blurts.jsonl"
 AUDIO_DIR = BLURT_DIR / "audio"
 VOCAB_PATH = BLURT_DIR / "vocab.txt"
 SOUNDS_DIR = Path(__file__).parent / "sounds"
-CONFIG_PATH = BLURT_DIR / "config.toml"
+CONFIG_PATH = BLURT_DIR / "config.json"
+LEGACY_CONFIG_PATH = BLURT_DIR / "config.toml"
+CLIPBOARD_PASTE_SETTLE_S = 0.05
+CLIPBOARD_RESTORE_DELAY_S = 0.05
+PASTE_RETRY_DELAY_S = 0.2
+PROMPT_MAX_CHARS = 700  # stay well under Whisper's prompt window
+PROMPT_MAX_KEYWORD_CHARS = 420
+PROMPT_MAX_FILES = 32
+CODING_HINT_TERMS = (
+    "python",
+    "pytest",
+    "ruff",
+    "uv",
+    "__init__.py",
+    "pyproject.toml",
+    "README.md",
+    "AGENTS.md",
+    "JSONL",
+    "TOML",
+    "CLI",
+    "snake_case",
+    "camelCase",
+    "Codex",
+    "Cursor",
+    "Claude Code",
+)
 
 # --- Supported languages (Whisper large-v3-turbo) ---
 SUPPORTED_LANGUAGES = {
@@ -220,9 +255,17 @@ SUPPORTED_LANGUAGES = {
 
 
 # --- Config ---
-def _load_config() -> dict:
-    """Load config from ~/.blurt/config.toml. Returns empty dict if missing."""
-    if not CONFIG_PATH.exists():
+def _default_config() -> dict:
+    return {
+        "language": "en",
+        "model_mode": DEFAULT_MODEL_MODE,
+        "pause_media": True,
+    }
+
+
+def _load_legacy_config() -> dict:
+    """Load legacy TOML config if present."""
+    if not LEGACY_CONFIG_PATH.exists():
         return {}
     try:
         import tomllib
@@ -230,9 +273,8 @@ def _load_config() -> dict:
         try:
             import tomli as tomllib  # type: ignore[no-redef]
         except ModuleNotFoundError:
-            # Fallback: parse simple key = "value" lines
             config = {}
-            for line in CONFIG_PATH.read_text().splitlines():
+            for line in LEGACY_CONFIG_PATH.read_text().splitlines():
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
@@ -241,9 +283,37 @@ def _load_config() -> dict:
                     config[k.strip()] = v.strip().strip('"').strip("'")
             return config
     try:
-        return tomllib.loads(CONFIG_PATH.read_text())
+        return tomllib.loads(LEGACY_CONFIG_PATH.read_text())
     except Exception:
         return {}
+
+
+def _load_config() -> dict:
+    """Load config from ~/.blurt/config.json, creating it if needed."""
+    defaults = _default_config()
+    if CONFIG_PATH.exists():
+        try:
+            data = json.loads(CONFIG_PATH.read_text())
+            if isinstance(data, dict):
+                config = defaults.copy()
+                config.update(data)
+                return config
+            return defaults
+        except Exception:
+            return defaults
+
+    legacy_config = _load_legacy_config()
+    config = defaults.copy()
+    config.update(legacy_config)
+    if legacy_config and "model_mode" not in legacy_config:
+        # Preserve existing behavior for upgrades from pre-mode installs.
+        config["model_mode"] = "accurate"
+    try:
+        ensure_dirs()
+        CONFIG_PATH.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+    except Exception:
+        pass
+    return config
 
 
 def _get_language() -> str:
@@ -256,6 +326,21 @@ def _get_language() -> str:
     return lang
 
 
+def _get_model_mode() -> str:
+    """Get configured model mode, defaulting to the current default mode."""
+    config = _load_config()
+    mode = config.get("model_mode", DEFAULT_MODEL_MODE)
+    if mode not in MODEL_MODES:
+        console.print(f"  [yellow]Unknown model_mode '{mode}' in config, using '{DEFAULT_MODEL_MODE}'[/yellow]")
+        return DEFAULT_MODEL_MODE
+    return mode
+
+
+def _get_model_repo() -> str:
+    """Return the Hugging Face repo for the active model mode."""
+    return MODEL_MODES[_get_model_mode()]["repo"]
+
+
 # --- State ---
 recording = False
 record_requested = False
@@ -266,6 +351,7 @@ stream = None
 lock = threading.Lock()
 model_lock = threading.Lock()
 whisper_pipe = None
+loaded_model_repo: str | None = None
 rec_status = None
 total_words = 0
 recording_session_id = 0
@@ -336,20 +422,36 @@ def ensure_dirs():
 
 
 def _save_config(config: dict):
-    """Write settings to config.toml."""
+    """Write settings to config.json."""
     ensure_dirs()
-    lines = []
-    for k, v in config.items():
-        if isinstance(v, bool):
-            lines.append(f"{k} = {'true' if v else 'false'}")
-        elif isinstance(v, str):
-            lines.append(f'{k} = "{v}"')
-        else:
-            lines.append(f"{k} = {v}")
-    CONFIG_PATH.write_text("\n".join(lines) + "\n")
+    CONFIG_PATH.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
 
 
 # --- Vocab ---
+
+
+def _dedupe_preserve_order(items):
+    seen = set()
+    out = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+def _join_with_budget(items, max_chars: int, sep: str = ", ") -> str:
+    parts = []
+    total = 0
+    for item in items:
+        extra = len(item) if not parts else len(sep) + len(item)
+        if parts and total + extra > max_chars:
+            break
+        if not parts and len(item) > max_chars:
+            break
+        parts.append(item)
+        total += extra
+    return sep.join(parts)
 
 
 def _load_vocab():
@@ -366,13 +468,20 @@ def _save_vocab(words):
 
 
 def _vocab_prompt():
-    """Build an initial_prompt string from vocab words and file names for keyword boosting."""
+    """Build an initial_prompt tuned for coding-heavy dictation."""
     words = _load_vocab()
-    file_names = _file_basenames()
-    combined = words + file_names
-    if not combined:
+    file_names = _prompt_file_names()
+    if not words and not file_names:
         return None
-    return ", ".join(combined)
+    if not file_names:
+        return ", ".join(words)
+
+    keywords = _dedupe_preserve_order(words + file_names + list(CODING_HINT_TERMS))
+    keyword_tail = _join_with_budget(keywords, PROMPT_MAX_KEYWORD_CHARS)
+    examples = _coding_prompt_examples(file_names)
+
+    prompt = " ".join(examples + ([keyword_tail] if keyword_tail else []))
+    return prompt[:PROMPT_MAX_CHARS].rstrip(" ,.")
 
 
 def _file_basenames() -> list[str]:
@@ -388,6 +497,73 @@ def _file_basenames() -> list[str]:
             seen.add(name)
             names.append(name)
     return names
+
+
+def _prompt_file_names() -> list[str]:
+    """Choose a capped, coding-relevant set of file names for Whisper prompting."""
+    names = _file_basenames()
+    if not names:
+        return []
+
+    ranked = list(enumerate(names))
+
+    def _priority(entry: tuple[int, str]) -> tuple[int, int]:
+        index, name = entry
+        lower = name.lower()
+        score = 0
+        if lower in {"pyproject.toml", "package.json", "cargo.toml", "go.mod", "readme.md", "agents.md", "claude.md"}:
+            score += 4
+        if "test" in lower or lower.startswith("spec"):
+            score += 3
+        if lower.endswith(
+            (
+                ".py",
+                ".ts",
+                ".tsx",
+                ".js",
+                ".jsx",
+                ".go",
+                ".rs",
+                ".swift",
+                ".java",
+                ".kt",
+                ".rb",
+                ".php",
+                ".c",
+                ".cc",
+                ".cpp",
+                ".h",
+                ".hpp",
+                ".cs",
+                ".json",
+                ".toml",
+                ".yaml",
+                ".yml",
+                ".md",
+            )
+        ):
+            score += 2
+        if lower.startswith("__") and lower.endswith(".py"):
+            score += 1
+        return (-score, index)
+
+    return [name for _, name in sorted(ranked, key=_priority)[:PROMPT_MAX_FILES]]
+
+
+def _coding_prompt_examples(file_names: list[str]) -> list[str]:
+    """Short transcript-style examples work better than instruction-like prompts."""
+    primary = next((n for n in file_names if n.lower().endswith((".py", ".ts", ".tsx", ".js", ".jsx"))), "__init__.py")
+    test_file = next((n for n in file_names if "test" in n.lower()), "test_app.py")
+    config_file = next(
+        (n for n in file_names if n.lower() in {"pyproject.toml", "package.json", "cargo.toml", "go.mod"}),
+        "pyproject.toml",
+    )
+    docs_file = next((n for n in file_names if n.lower() in {"readme.md", "agents.md", "claude.md"}), "README.md")
+    return [
+        f"open {primary} and update the function.",
+        f"add a test in {test_file} and run pytest.",
+        f"check {config_file} and {docs_file}.",
+    ]
 
 
 def show_vocab():
@@ -442,10 +618,11 @@ def _model_is_cached(repo_id: str) -> bool:
 
 def load_model():
     """Lazy-load mlx-whisper on first use."""
-    global whisper_pipe
+    global whisper_pipe, loaded_model_repo
+    repo_id = _get_model_repo()
     with model_lock:
-        if whisper_pipe is None:
-            cached = _model_is_cached(MODEL)
+        if whisper_pipe is None or loaded_model_repo != repo_id:
+            cached = _model_is_cached(repo_id)
             if cached:
                 import huggingface_hub
 
@@ -456,28 +633,30 @@ def load_model():
                     dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
                     mlx_whisper.transcribe(
                         dummy,
-                        path_or_hf_repo=MODEL,
+                        path_or_hf_repo=repo_id,
                         language=_get_language(),
                         condition_on_previous_text=False,
                         temperature=0.0,
                         without_timestamps=True,
                     )
                     whisper_pipe = mlx_whisper
+                    loaded_model_repo = repo_id
                 huggingface_hub.utils.enable_progress_bars()
             else:
-                console.print(f"  [{C_ACCENT}]Downloading model (~1.6 GB, first run only)...[/{C_ACCENT}]")
+                console.print(f"  [{C_ACCENT}]Downloading {_get_model_mode()} model (first run only)...[/{C_ACCENT}]")
                 import mlx_whisper
 
                 dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
                 mlx_whisper.transcribe(
                     dummy,
-                    path_or_hf_repo=MODEL,
+                    path_or_hf_repo=repo_id,
                     language=_get_language(),
                     condition_on_previous_text=False,
                     temperature=0.0,
                     without_timestamps=True,
                 )
                 whisper_pipe = mlx_whisper
+                loaded_model_repo = repo_id
             _play_sound("ready")
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
             _start_keepalive()
@@ -497,7 +676,7 @@ def _keepalive_loop():
                 dummy = np.zeros(SAMPLE_RATE // 10, dtype=np.float32)  # 0.1s of silence
                 whisper_pipe.transcribe(
                     dummy,
-                    path_or_hf_repo=MODEL,
+                    path_or_hf_repo=loaded_model_repo or _get_model_repo(),
                     language=_get_language(),
                     condition_on_previous_text=False,
                     temperature=0.0,
@@ -513,6 +692,8 @@ def _keepalive_loop():
 def _start_keepalive():
     """Start the periodic model keep-alive after initial load."""
     global _keepalive_timer
+    if _keepalive_timer is not None:
+        _keepalive_timer.cancel()
     _keepalive_timer = threading.Timer(_KEEPALIVE_INTERVAL, _keepalive_loop)
     _keepalive_timer.daemon = True
     _keepalive_timer.start()
@@ -731,6 +912,29 @@ def _normalize_filename(name: str) -> str:
     return stem.strip("_") + "." + ext
 
 
+def _filename_variants(name: str) -> list[str]:
+    """Generate plausible filename spellings Whisper may emit for spoken file names."""
+    variants = []
+    seen = set()
+
+    def add(value: str):
+        value = re.sub(r"\s+", " ", value.strip())
+        if value and value not in seen:
+            seen.add(value)
+            variants.append(value)
+
+    for variant in (name, _normalize_filename(name)):
+        add(variant)
+        spoken = variant.replace(".", " dot ").replace("_", " ").replace("-", " ")
+        add(spoken)
+        stem, _, ext = variant.rpartition(".")
+        if stem and ext:
+            stem_words = stem.replace("_", " ").replace("-", " ")
+            add(f"{stem_words} {ext}")
+
+    return variants
+
+
 def _resolve_file_refs(text: str) -> str:
     """Replace recognized filenames with @full/path for coding agent compatibility."""
     paths = _build_file_index()
@@ -743,18 +947,16 @@ def _resolve_file_refs(text: str) -> str:
     seen_patterns: set[str] = set()
     for p in paths:
         name = p.rsplit("/", 1)[-1]
-        for variant in {name, _normalize_filename(name)}:
+        for variant in _filename_variants(name):
             if variant not in seen_patterns:
                 seen_patterns.add(variant)
                 variants.append((variant, p))
 
     result = text
     for match_name, full_path in sorted(variants, key=lambda x: -len(x[0])):
-        pattern = re.compile(re.escape(match_name), re.IGNORECASE)
-        result = pattern.sub(f"@{full_path} ", result)
+        pattern = re.compile(rf"(?<![@/\w]){re.escape(match_name)}(?![/\w])", re.IGNORECASE)
+        result = pattern.sub(f"@{full_path}", result)
 
-    # Collapse any double spaces introduced by trailing space in replacement
-    result = re.sub(r"  +", " ", result)
     return result.strip()
 
 
@@ -780,6 +982,16 @@ def _vad_trim(audio: np.ndarray, sr: int, frame_ms: int = 30, energy_threshold: 
     start = max(0, active[0] - VAD_LEADING_MARGIN_FRAMES) * frame_len
     end = min(len(audio), (active[-1] + 1 + VAD_TRAILING_MARGIN_FRAMES) * frame_len)
     return audio[start:end]
+
+
+def _persist_blurt(wav_path: Path, audio_data: np.ndarray, entry: dict):
+    """Persist audio and log entry outside the transcription hot path."""
+    try:
+        save_wav(wav_path, audio_data)
+        with open(JSONL_PATH, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
 
 
 def stop_recording():
@@ -825,12 +1037,11 @@ def stop_recording():
 
         ts = datetime.now(timezone.utc)
         wav_path = AUDIO_DIR / f"{ts.strftime('%Y%m%d_%H%M%S')}.wav"
-        save_wav(wav_path, audio_data)
 
         with console.status(f"  [{C_ACCENT}]Transcribing...[/{C_ACCENT}]"):
             load_model()
             transcribe_kwargs = dict(
-                path_or_hf_repo=MODEL,
+                path_or_hf_repo=_get_model_repo(),
                 language=_get_language(),
                 condition_on_previous_text=False,
                 temperature=0.0,
@@ -864,8 +1075,7 @@ def stop_recording():
             "duration_s": duration_s,
             "words": word_count,
         }
-        with open(JSONL_PATH, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+        threading.Thread(target=_persist_blurt, args=(wav_path, audio_data, entry), daemon=True).start()
         preview = text[:60] + ("..." if len(text) > 60 else "")
         console.print(f'  [{C_OK}]\u2713[/{C_OK}] "{preview}" [{C_DIM}]{latency_ms}ms[/{C_DIM}]')
     finally:
@@ -908,19 +1118,24 @@ def _simulate_paste() -> bool:
     return result.returncode == 0
 
 
+def _restore_clipboard_later(prev: bytes):
+    """Restore the previous clipboard after the paste has landed."""
+    time.sleep(CLIPBOARD_RESTORE_DELAY_S)
+    _set_clipboard(prev)
+
+
 def paste_transcription(text: str):
     """Copy text, paste it, then restore the previous clipboard."""
     prev = _get_clipboard()
     _set_clipboard(text.encode("utf-8"))
-    time.sleep(0.15)
+    time.sleep(CLIPBOARD_PASTE_SETTLE_S)
     if not _simulate_paste():
         # Retry once after a short delay (works around transient osascript failures on macOS Tahoe)
-        time.sleep(0.3)
+        time.sleep(PASTE_RETRY_DELAY_S)
         if not _simulate_paste():
             console.print(f"  [{C_REC}]Paste failed — text is in clipboard, use ⌘V manually[/{C_REC}]")
             return
-    time.sleep(0.1)
-    _set_clipboard(prev)
+    threading.Thread(target=_restore_clipboard_later, args=(prev,), daemon=True).start()
 
 
 # --- Shortcut handling ---
@@ -1033,6 +1248,59 @@ def cmd_upgrade():
     sys.exit(subprocess.call(cmd))
 
 
+def cmd_mode():
+    """Show or set the active model mode."""
+    if len(sys.argv) >= 3 and sys.argv[2] in MODEL_MODES:
+        mode = sys.argv[2]
+        _set_mode(mode)
+        repo = MODEL_MODES[mode]["repo"]
+        console.print(f"  [{C_OK}]✓[/{C_OK}] Mode: {mode}")
+        console.print(f"  [{C_DIM}]{repo.split('/')[-1]}[/{C_DIM}]")
+        return
+
+    if len(sys.argv) >= 3:
+        console.print(f"  [red]unknown mode:[/red] {sys.argv[2]}")
+        console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate[/{C_DIM}]")
+        sys.exit(1)
+
+    mode = _get_model_mode()
+    repo = _get_model_repo()
+    label = MODEL_MODES[mode]["label"]
+    console.print(f"  Mode: [{C_ACCENT}]{mode}[/{C_ACCENT}]")
+    console.print(f"  [{C_DIM}]{repo.split('/')[-1]} • {label}[/{C_DIM}]")
+    console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate[/{C_DIM}]")
+
+
+def _set_mode(mode: str):
+    """Persist the selected model mode."""
+    config = _load_config()
+    config["model_mode"] = mode
+    _save_config(config)
+
+
+def _apply_mode_flag() -> bool:
+    """Handle quick mode-setting flags and exit after writing config."""
+    if "--fast" in sys.argv:
+        _set_mode("fast")
+        console.print(f"  [{C_OK}]✓[/{C_OK}] Mode: fast")
+        return True
+    if "--accurate" in sys.argv:
+        _set_mode("accurate")
+        console.print(f"  [{C_OK}]✓[/{C_OK}] Mode: accurate")
+        return True
+    if "--mode" in sys.argv:
+        idx = sys.argv.index("--mode")
+        if idx + 1 >= len(sys.argv) or sys.argv[idx + 1] not in MODEL_MODES:
+            console.print("  [red]invalid --mode[/red]")
+            console.print(f"  [{C_DIM}]Usage: blurt --mode fast|accurate[/{C_DIM}]")
+            sys.exit(1)
+        mode = sys.argv[idx + 1]
+        _set_mode(mode)
+        console.print(f"  [{C_OK}]✓[/{C_OK}] Mode: {mode}")
+        return True
+    return False
+
+
 def _check_microphone():
     """Probe microphone access by opening a brief test stream."""
     try:
@@ -1077,6 +1345,8 @@ def cmd_doctor():
     """Run health checks and report system status."""
     console.print(f"\n  [bold {C_ACCENT}]blurt doctor[/bold {C_ACCENT}]\n")
     all_ok = True
+    repo_id = _get_model_repo()
+    mode = _get_model_mode()
 
     # 1. macOS check
     if sys.platform == "darwin":
@@ -1140,13 +1410,14 @@ def cmd_doctor():
             console.print("  [yellow]?[/yellow] could not check accessibility")
 
     # 5. Whisper model cached
-    if _model_is_cached(MODEL):
-        console.print(f"  [{C_OK}]✓[/{C_OK}] model cached ({MODEL.split('/')[-1]})")
+    if _model_is_cached(repo_id):
+        console.print(f"  [{C_OK}]✓[/{C_OK}] model cached ({repo_id.split('/')[-1]})")
     else:
-        console.print("  [yellow]![/yellow] model not cached — will download (~1.6 GB) on first use")
+        console.print(f"  [yellow]![/yellow] {mode} model not cached — will download on first use")
 
     # 6. Config / language
     config = _load_config()
+    console.print(f"  [{C_OK}]✓[/{C_OK}] mode: {mode}")
     lang = config.get("language", "en")
     lang_name = SUPPORTED_LANGUAGES.get(lang, "Unknown")
     if lang in SUPPORTED_LANGUAGES:
@@ -1187,6 +1458,9 @@ def show_help():
     console.print("    blurt add <word/phrase>     add word to vocab for better recognition")
     console.print("    blurt rm <word/phrase>      remove word from vocab")
     console.print("    blurt vocab                 list vocab words")
+    console.print("    blurt mode [fast|accurate]  choose transcription speed/accuracy")
+    console.print("    blurt --fast|--accurate     quick-set mode in config.json")
+    console.print("    blurt --mode fast|accurate  quick-set mode in config.json")
     console.print("    blurt pause [on|off]        toggle media pause during recording")
     console.print("    blurt log [-n N]            show recent transcriptions (default 20)")
     console.print("    blurt doctor                run health checks")
@@ -1201,8 +1475,11 @@ def main():
         print(f"blurt {__version__}")
         return
 
-    if len(sys.argv) >= 2 and sys.argv[1] in ("help", "--help", "-h"):
+    if any(arg in ("help", "--help", "-h") for arg in sys.argv[1:]):
         show_help()
+        return
+
+    if _apply_mode_flag():
         return
 
     if len(sys.argv) >= 2 and sys.argv[1] == "log":
@@ -1216,6 +1493,10 @@ def main():
 
     if len(sys.argv) >= 2 and sys.argv[1] == "vocab":
         show_vocab()
+        return
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "mode":
+        cmd_mode()
         return
 
     if len(sys.argv) >= 3 and sys.argv[1] == "add":
@@ -1284,13 +1565,17 @@ def main():
     info.add_column(style=f"bold {C_ACCENT}", justify="right")
     info.add_column()
     info.add_row("shortcut", shortcut_str)
-    info.add_row("model", MODEL.split("/")[-1])
+    mode = _get_model_mode()
+    repo_id = _get_model_repo()
+    info.add_row("mode", f"{mode} ({MODEL_MODES[mode]['label']})")
+    info.add_row("model", repo_id.split("/")[-1])
     lang = _get_language()
     lang_name = SUPPORTED_LANGUAGES.get(lang, lang)
     info.add_row("language", f"{lang_name} ({lang})")
     home = str(Path.home())
     info.add_row("log", str(JSONL_PATH).replace(home, "~"))
     info.add_row("audio", str(AUDIO_DIR).replace(home, "~"))
+    info.add_row("config", str(CONFIG_PATH).replace(home, "~"))
     vocab_count = len(_load_vocab())
     info.add_row("vocab", str(VOCAB_PATH).replace(home, "~"))
 
@@ -1313,7 +1598,7 @@ def main():
     else:
         console.print(f"\n  [{C_DIM}]no git repo — run from a project directory to enable @-mentions[/{C_DIM}]")
 
-    console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 hold shortcut to record[/{C_DIM}]\n")
+    console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 hold shortcut to record \u2022 {mode} mode[/{C_DIM}]\n")
 
     # Check permissions (keyboard + microphone)
     _check_accessibility()
