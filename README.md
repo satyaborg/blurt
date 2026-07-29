@@ -16,7 +16,7 @@
   <img src="https://raw.githubusercontent.com/satyaborg/blurt/main/demo.gif" alt="demo" width="600">
 </p>
 
-On-device voice-to-text for macOS. Hold right **⌘**, speak, release - your words go straight into Claude Code, Codex, Cursor, OpenCode or any other agent, wherever your cursor is.
+On-device voice-to-text for macOS. Press right **⌘**, speak, then press it again - your words go straight into Claude Code, Codex, Cursor, OpenCode or any other agent, wherever your cursor is.
 
 ## Install
 
@@ -39,8 +39,8 @@ First run downloads the Whisper model (~1.6 GB, one-time). macOS will prompt for
 
 | Action | Description |
 |---|---|
-| Hold right **⌘** | Start recording |
-| Release right **⌘** | Stop, transcribe, paste at cursor |
+| Press right **⌘** | Start recording |
+| Press right **⌘** again | Stop, transcribe, paste at cursor |
 | **Ctrl + C** | Quit |
 
 ## Custom Words

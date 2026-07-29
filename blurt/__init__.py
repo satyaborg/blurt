@@ -3,7 +3,7 @@
 Blurt - Talk to your coding agents.
 
 On-device voice-to-text for macOS Apple Silicon.
-Hold a shortcut, speak, release - text appears at your cursor.
+Press the shortcut to start, then press it again to stop - text appears at your cursor.
 Powered by MLX Whisper. No cloud, no API keys.
 
 Homepage: https://github.com/satyaborg/blurt
@@ -1157,30 +1157,33 @@ def _normalize(key):
 
 def on_press(key):
     global record_requested, start_pending
+    shortcut_was_pressed = SHORTCUT.issubset(pressed_keys)
     pressed_keys.add(_normalize(key))
-    if SHORTCUT.issubset(pressed_keys):
-        should_start = False
-        with lock:
-            if not record_requested:
-                record_requested = True
-            if not recording and not start_pending:
-                start_pending = True
-                should_start = True
-        if should_start:
-            _play_sound("on")
-            threading.Thread(target=start_recording, daemon=True).start()
+    if shortcut_was_pressed or not SHORTCUT.issubset(pressed_keys):
+        return
+
+    should_start = False
+    should_stop = False
+    with lock:
+        if recording:
+            record_requested = False
+            should_stop = True
+        elif start_pending:
+            record_requested = False
+        else:
+            record_requested = True
+            start_pending = True
+            should_start = True
+
+    if should_start:
+        _play_sound("on")
+        threading.Thread(target=start_recording, daemon=True).start()
+    elif should_stop:
+        threading.Thread(target=stop_recording, daemon=True).start()
 
 
 def on_release(key):
-    global record_requested
     pressed_keys.discard(_normalize(key))
-    if not SHORTCUT.issubset(pressed_keys):
-        should_stop = False
-        with lock:
-            record_requested = False
-            should_stop = recording
-        if should_stop:
-            threading.Thread(target=stop_recording, daemon=True).start()
 
 
 def _check_update_bg():
@@ -1454,7 +1457,7 @@ def show_help():
     """Print CLI usage."""
     console.print(f"\n  [bold {C_ACCENT}]blurt[/bold {C_ACCENT}] - on-device voice-to-text for macOS\n")
     console.print("  [bold]Usage:[/bold]")
-    console.print("    blurt                      start listening (hold shortcut to record)")
+    console.print("    blurt                      start listening (press shortcut to toggle recording)")
     console.print("    blurt add <word/phrase>     add word to vocab for better recognition")
     console.print("    blurt rm <word/phrase>      remove word from vocab")
     console.print("    blurt vocab                 list vocab words")
@@ -1598,7 +1601,7 @@ def main():
     else:
         console.print(f"\n  [{C_DIM}]no git repo — run from a project directory to enable @-mentions[/{C_DIM}]")
 
-    console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 hold shortcut to record \u2022 {mode} mode[/{C_DIM}]\n")
+    console.print(f"\n  [{C_DIM}]ctrl+c quit \u2022 press shortcut to start/stop \u2022 {mode} mode[/{C_DIM}]\n")
 
     # Check permissions (keyboard + microphone)
     _check_accessibility()
