@@ -4,7 +4,7 @@ This file provides guidance to coding agents (Claude Code, Codex, Cursor etc.) w
 
 ## What is Blurt
 
-On-device voice-to-text for macOS Apple Silicon. Single-file Python app - hold right ⌘, speak, release, text pastes at cursor. Uses MLX Whisper locally, no cloud/API.
+On-device voice-to-text for macOS Apple Silicon. Single-file Python app - press right ⌘ to start, press it again to stop, and text pastes at the cursor. Uses MLX Whisper locally, no cloud/API.
 
 ## Commands
 
@@ -33,7 +33,7 @@ Requires `portaudio` system dep (`brew install portaudio`).
 
 Single package: `blurt/__init__.py` contains everything. No submodules.
 
-**Flow:** `main()` → starts pynput keyboard listener → `on_press`/`on_release` detect shortcut hold → `start_recording()` opens sounddevice stream → `stop_recording()` concatenates audio buffer, saves WAV to `~/.blurt/audio/`, transcribes via `mlx_whisper.transcribe()`, pastes via pbcopy+osascript, logs to `~/.blurt/blurts.jsonl`.
+**Flow:** `main()` → starts pynput keyboard listener → successive shortcut presses toggle `start_recording()` and `stop_recording()` → stopped audio is concatenated and saved to `~/.blurt/audio/` → `mlx_whisper.transcribe()` transcribes it → pbcopy+osascript pastes it → the transcript is logged to `~/.blurt/blurts.jsonl`.
 
 **Key design details:**
 - Model (`mlx-community/whisper-large-v3-turbo`) is lazy-loaded on first use and pre-warmed in background thread at startup

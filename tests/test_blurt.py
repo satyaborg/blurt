@@ -976,16 +976,12 @@ def test_stop_recording_does_not_resume_newer_media_session(monkeypatch):
     assert blurt._media_paused_session_id == 6
 
 
-def test_on_release_cancels_pending_start(monkeypatch):
+def test_shortcut_release_keeps_pending_start(monkeypatch):
     spawned = []
-    stream_created = []
     monkeypatch.setattr(blurt, "pressed_keys", set())
     monkeypatch.setattr(blurt, "recording", False)
     monkeypatch.setattr(blurt, "record_requested", False)
     monkeypatch.setattr(blurt, "start_pending", False)
-    monkeypatch.setattr(blurt, "audio_buffer", [])
-    monkeypatch.setattr(blurt, "rec_status", None)
-    monkeypatch.setattr(blurt, "stream", None)
     monkeypatch.setattr(blurt, "_play_sound", lambda name: None)
 
     class FakeThread:
@@ -996,27 +992,89 @@ def test_on_release_cancels_pending_start(monkeypatch):
         def start(self):
             pass
 
-    class FakeStream:
-        def start(self):
-            stream_created.append(True)
-
-        def stop(self):
-            pass
-
-        def close(self):
-            pass
-
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
-    monkeypatch.setattr(blurt.sd, "InputStream", lambda **kw: FakeStream())
 
     blurt.on_press(blurt.keyboard.Key.cmd_r)
     blurt.on_release(blurt.keyboard.Key.cmd_r)
-    spawned[0].target()
 
-    assert stream_created == []
+    assert len(spawned) == 1
+    assert spawned[0].target is blurt.start_recording
     assert blurt.recording is False
+    assert blurt.record_requested is True
+    assert blurt.start_pending is True
+
+
+def test_second_shortcut_press_cancels_pending_start(monkeypatch):
+    spawned = []
+    monkeypatch.setattr(blurt, "pressed_keys", set())
+    monkeypatch.setattr(blurt, "recording", False)
+    monkeypatch.setattr(blurt, "record_requested", False)
+    monkeypatch.setattr(blurt, "start_pending", False)
+    monkeypatch.setattr(blurt, "_play_sound", lambda name: None)
+
+    class FakeThread:
+        def __init__(self, target=None, daemon=None):
+            self.target = target
+            spawned.append(self)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
+
+    blurt.on_press(blurt.keyboard.Key.cmd_r)
+    blurt.on_release(blurt.keyboard.Key.cmd_r)
+    blurt.on_press(blurt.keyboard.Key.cmd_r)
+
+    assert len(spawned) == 1
     assert blurt.record_requested is False
-    assert blurt.start_pending is False
+    assert blurt.start_pending is True
+
+
+def test_second_shortcut_press_stops_recording(monkeypatch):
+    spawned = []
+    monkeypatch.setattr(blurt, "pressed_keys", set())
+    monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "record_requested", True)
+    monkeypatch.setattr(blurt, "start_pending", False)
+
+    class FakeThread:
+        def __init__(self, target=None, daemon=None):
+            self.target = target
+            spawned.append(self)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
+
+    blurt.on_press(blurt.keyboard.Key.cmd_r)
+
+    assert len(spawned) == 1
+    assert spawned[0].target is blurt.stop_recording
+    assert blurt.record_requested is False
+
+
+def test_shortcut_key_repeat_does_not_toggle_recording(monkeypatch):
+    spawned = []
+    monkeypatch.setattr(blurt, "pressed_keys", {blurt.keyboard.Key.cmd_r})
+    monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "record_requested", True)
+    monkeypatch.setattr(blurt, "start_pending", False)
+
+    class FakeThread:
+        def __init__(self, target=None, daemon=None):
+            spawned.append(self)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
+
+    blurt.on_press(blurt.keyboard.Key.cmd_r)
+
+    assert spawned == []
+    assert blurt.record_requested is True
 
 
 def test_vad_trim_preserves_partial_tail_frame():
