@@ -1,11 +1,23 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.6](https://github.com/satyaborg/blurt/releases/tag/v0.8.6) — 2026-07-30
+
+### Bug fixes
+
+- fix: silence pipx home path warning ([a9c9e90](https://github.com/satyaborg/blurt/commit/a9c9e90a128066e319117611b9f25f591504714d))
+- fix: delay Bluetooth media resume ([6b917f3](https://github.com/satyaborg/blurt/commit/6b917f3fd93ff4b024300ed48de54d6c8f8dd758))
+- fix: transfer paused media ownership ([bcef2ff](https://github.com/satyaborg/blurt/commit/bcef2ffd6234c0bbe47a6075905dca3e92abf29c))
+- fix: respect disabled media pause setting ([c59b7ec](https://github.com/satyaborg/blurt/commit/c59b7ec53c320f091719ad8ba8d8a28153f87eb9))
 ## [0.8.5](https://github.com/satyaborg/blurt/releases/tag/v0.8.5) — 2026-07-30
 
 ### Bug fixes
 
 - fix: reduce transcription latency ([dd29f25](https://github.com/satyaborg/blurt/commit/dd29f25f34a1747d1523d858ad9843f37221cb4a))
+
+### Other
+
+- changelog v0.8.5 ([1646aaa](https://github.com/satyaborg/blurt/commit/1646aaa5aa351e7bdfdbec5fe2fc05e6cf9e9e54))
 ## [0.8.4](https://github.com/satyaborg/blurt/releases/tag/v0.8.4) — 2026-07-30
 
 ### Features
