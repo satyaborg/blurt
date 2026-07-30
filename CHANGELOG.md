@@ -1,11 +1,24 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.4](https://github.com/satyaborg/blurt/releases/tag/v0.8.4) — 2026-07-30
+
+### Features
+
+- Add fast/accurate model mode switching and migrate config to JSON ([40ff15e](https://github.com/satyaborg/blurt/commit/40ff15e385e7e4fed37f0d0020edf2e746fe3793))
+
+### Other
+
+- feat!: toggle recording with shortcut presses ([11ce0d1](https://github.com/satyaborg/blurt/commit/11ce0d1f1df75d62fde30ac8c9552dbd8dc35e75))
 ## [0.8.3](https://github.com/satyaborg/blurt/releases/tag/v0.8.3) — 2026-04-07
 
 ### Bug fixes
 
 - Fix audio clipping and start/stop race in recording flow ([4a2a9c1](https://github.com/satyaborg/blurt/commit/4a2a9c18078f332a1607d2d1fbf4257b527e66cb))
+
+### Other
+
+- changelog v0.8.3 ([108d966](https://github.com/satyaborg/blurt/commit/108d966fcca49588277f8254e9b84e0e11332f3c))
 ## [0.8.2](https://github.com/satyaborg/blurt/releases/tag/v0.8.2) — 2026-03-13
 
 ### Bug fixes
