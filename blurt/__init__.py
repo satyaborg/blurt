@@ -115,6 +115,7 @@ DEFAULT_MODEL_MODE = "fast"
 SHORTCUT = {keyboard.Key.cmd_r}  # Right Cmd only. Alt: {keyboard.Key.cmd, keyboard.Key.shift}
 SAMPLE_RATE = 16000
 CHANNELS = 1
+MEDIA_RESUME_DELAY_S = 2.0
 VAD_LEADING_MARGIN_FRAMES = 2
 VAD_TRAILING_MARGIN_FRAMES = 8
 BLURT_DIR = Path.home() / ".blurt"
@@ -1085,7 +1086,7 @@ def stop_recording():
         )
     finally:
         if _media_paused_session_id == session_id:
-            time.sleep(1)
+            time.sleep(MEDIA_RESUME_DELAY_S)
         _resume_media(session_id)
 
 

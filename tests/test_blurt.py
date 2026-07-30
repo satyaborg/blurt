@@ -1014,6 +1014,7 @@ def test_stop_recording_stops_stream_without_delay(monkeypatch):
 
 def test_stop_recording_reports_end_to_end_latency(monkeypatch, capsys):
     times = iter([10.0, 10.1, 10.4, 10.6])
+    events = []
     persisted = []
     pasted = []
 
@@ -1034,21 +1035,26 @@ def test_stop_recording_reports_end_to_end_latency(monkeypatch, capsys):
             if self.target is blurt._persist_blurt:
                 persisted.append(self.args[2])
 
+    def fake_paste(text):
+        pasted.append(text)
+        events.append(("paste", text))
+
     monkeypatch.setattr(blurt.time, "monotonic", lambda: next(times))
-    monkeypatch.setattr(blurt, "_resume_media", lambda session_id: None)
+    monkeypatch.setattr(blurt.time, "sleep", lambda seconds: events.append(("sleep", seconds)))
+    monkeypatch.setattr(blurt, "_resume_media", lambda session_id: events.append(("resume", session_id)))
     monkeypatch.setattr(blurt, "recording", True)
     monkeypatch.setattr(blurt, "recording_session_id", 5)
     monkeypatch.setattr(blurt, "stream", type("S", (), {"stop": lambda s: None, "close": lambda s: None})())
     monkeypatch.setattr(blurt, "rec_status", type("R", (), {"stop": lambda s: None})())
     monkeypatch.setattr(blurt, "audio_buffer", [np.full((16000, 1), 0.1, dtype=np.float32)])
-    monkeypatch.setattr(blurt, "_media_paused_session_id", None)
+    monkeypatch.setattr(blurt, "_media_paused_session_id", 5)
     monkeypatch.setattr(blurt, "load_model", lambda: None)
     monkeypatch.setattr(blurt, "whisper_pipe", FakeWhisper())
     monkeypatch.setattr(blurt, "_get_model_repo", lambda: "test/model")
     monkeypatch.setattr(blurt, "_get_language", lambda: "en")
     monkeypatch.setattr(blurt, "_vocab_prompt", lambda: None)
     monkeypatch.setattr(blurt, "_resolve_file_refs", lambda text: text)
-    monkeypatch.setattr(blurt, "paste_transcription", lambda text: pasted.append(text))
+    monkeypatch.setattr(blurt, "paste_transcription", fake_paste)
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
 
     blurt.stop_recording()
@@ -1059,6 +1065,11 @@ def test_stop_recording_reports_end_to_end_latency(monkeypatch, capsys):
     assert persisted[0]["transcription_ms"] == 300
     assert "600ms total" in captured.out
     assert "300ms transcribe" in captured.out
+    assert events == [
+        ("paste", "hello world"),
+        ("sleep", blurt.MEDIA_RESUME_DELAY_S),
+        ("resume", 5),
+    ]
 
 
 def test_stop_recording_does_not_resume_newer_media_session(monkeypatch):
