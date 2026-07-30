@@ -768,6 +768,19 @@ def test_pause_media_noop_when_disabled(monkeypatch):
     assert blurt._media_paused_session_id is None
 
 
+def test_pause_media_does_not_transfer_existing_session_when_disabled(monkeypatch):
+    calls = []
+    fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
+    monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
+    monkeypatch.setattr(blurt, "_media_paused_session_id", 5)
+    monkeypatch.setattr(blurt, "_load_config", lambda: {"pause_media": False})
+
+    blurt._pause_media(6)
+
+    assert calls == []
+    assert blurt._media_paused_session_id == 5
+
+
 def test_pause_media_noop_when_no_framework(monkeypatch):
     """Should silently handle missing MediaRemote framework."""
     monkeypatch.setattr(blurt, "_mr_lib", None)
