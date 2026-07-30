@@ -115,6 +115,7 @@ DEFAULT_MODEL_MODE = "fast"
 SHORTCUT = {keyboard.Key.cmd_r}  # Right Cmd only. Alt: {keyboard.Key.cmd, keyboard.Key.shift}
 SAMPLE_RATE = 16000
 CHANNELS = 1
+MEDIA_RESUME_DELAY_S = 2.0
 VAD_LEADING_MARGIN_FRAMES = 2
 VAD_TRAILING_MARGIN_FRAMES = 8
 BLURT_DIR = Path.home() / ".blurt"
@@ -748,6 +749,9 @@ def _pause_media(session_id: int):
     global _media_paused_session_id
     if not _load_config().get("pause_media", True):
         return
+    if _media_paused_session_id is not None:
+        _media_paused_session_id = session_id
+        return
     if _mr_lib is None:
         return
     if not _is_audio_active():
@@ -1085,7 +1089,7 @@ def stop_recording():
         )
     finally:
         if _media_paused_session_id == session_id:
-            time.sleep(1)
+            time.sleep(MEDIA_RESUME_DELAY_S)
         _resume_media(session_id)
 
 

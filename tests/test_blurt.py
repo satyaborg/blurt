@@ -768,6 +768,19 @@ def test_pause_media_noop_when_disabled(monkeypatch):
     assert blurt._media_paused_session_id is None
 
 
+def test_pause_media_does_not_transfer_existing_session_when_disabled(monkeypatch):
+    calls = []
+    fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
+    monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
+    monkeypatch.setattr(blurt, "_media_paused_session_id", 5)
+    monkeypatch.setattr(blurt, "_load_config", lambda: {"pause_media": False})
+
+    blurt._pause_media(6)
+
+    assert calls == []
+    assert blurt._media_paused_session_id == 5
+
+
 def test_pause_media_noop_when_no_framework(monkeypatch):
     """Should silently handle missing MediaRemote framework."""
     monkeypatch.setattr(blurt, "_mr_lib", None)
@@ -1014,6 +1027,7 @@ def test_stop_recording_stops_stream_without_delay(monkeypatch):
 
 def test_stop_recording_reports_end_to_end_latency(monkeypatch, capsys):
     times = iter([10.0, 10.1, 10.4, 10.6])
+    events = []
     persisted = []
     pasted = []
 
@@ -1034,21 +1048,26 @@ def test_stop_recording_reports_end_to_end_latency(monkeypatch, capsys):
             if self.target is blurt._persist_blurt:
                 persisted.append(self.args[2])
 
+    def fake_paste(text):
+        pasted.append(text)
+        events.append(("paste", text))
+
     monkeypatch.setattr(blurt.time, "monotonic", lambda: next(times))
-    monkeypatch.setattr(blurt, "_resume_media", lambda session_id: None)
+    monkeypatch.setattr(blurt.time, "sleep", lambda seconds: events.append(("sleep", seconds)))
+    monkeypatch.setattr(blurt, "_resume_media", lambda session_id: events.append(("resume", session_id)))
     monkeypatch.setattr(blurt, "recording", True)
     monkeypatch.setattr(blurt, "recording_session_id", 5)
     monkeypatch.setattr(blurt, "stream", type("S", (), {"stop": lambda s: None, "close": lambda s: None})())
     monkeypatch.setattr(blurt, "rec_status", type("R", (), {"stop": lambda s: None})())
     monkeypatch.setattr(blurt, "audio_buffer", [np.full((16000, 1), 0.1, dtype=np.float32)])
-    monkeypatch.setattr(blurt, "_media_paused_session_id", None)
+    monkeypatch.setattr(blurt, "_media_paused_session_id", 5)
     monkeypatch.setattr(blurt, "load_model", lambda: None)
     monkeypatch.setattr(blurt, "whisper_pipe", FakeWhisper())
     monkeypatch.setattr(blurt, "_get_model_repo", lambda: "test/model")
     monkeypatch.setattr(blurt, "_get_language", lambda: "en")
     monkeypatch.setattr(blurt, "_vocab_prompt", lambda: None)
     monkeypatch.setattr(blurt, "_resolve_file_refs", lambda text: text)
-    monkeypatch.setattr(blurt, "paste_transcription", lambda text: pasted.append(text))
+    monkeypatch.setattr(blurt, "paste_transcription", fake_paste)
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
 
     blurt.stop_recording()
@@ -1059,6 +1078,11 @@ def test_stop_recording_reports_end_to_end_latency(monkeypatch, capsys):
     assert persisted[0]["transcription_ms"] == 300
     assert "600ms total" in captured.out
     assert "300ms transcribe" in captured.out
+    assert events == [
+        ("paste", "hello world"),
+        ("sleep", blurt.MEDIA_RESUME_DELAY_S),
+        ("resume", 5),
+    ]
 
 
 def test_stop_recording_does_not_resume_newer_media_session(monkeypatch):
@@ -1075,6 +1099,56 @@ def test_stop_recording_does_not_resume_newer_media_session(monkeypatch):
     blurt.stop_recording()
 
     assert calls == []
+    assert blurt._media_paused_session_id == 6
+
+
+def test_rapid_restart_transfers_paused_media_to_new_session(monkeypatch):
+    calls = []
+    fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
+
+    class FakeStream:
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    class FakeStatus:
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    def restart_during_media_delay(seconds):
+        assert seconds == blurt.MEDIA_RESUME_DELAY_S
+        blurt.record_requested = True
+        blurt.start_pending = True
+        blurt.start_recording()
+
+    monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
+    monkeypatch.setattr(blurt, "_load_config", lambda: {"pause_media": True})
+    monkeypatch.setattr(blurt, "_is_audio_active", lambda: False)
+    monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "record_requested", False)
+    monkeypatch.setattr(blurt, "start_pending", False)
+    monkeypatch.setattr(blurt, "recording_session_id", 5)
+    monkeypatch.setattr(blurt, "stream", FakeStream())
+    monkeypatch.setattr(blurt, "rec_status", FakeStatus())
+    monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "_media_paused_session_id", 5)
+    monkeypatch.setattr(blurt.sd, "InputStream", lambda **kwargs: FakeStream())
+    monkeypatch.setattr(blurt, "console", type("C", (), {"status": lambda self, message: FakeStatus()})())
+    monkeypatch.setattr(blurt.time, "sleep", restart_during_media_delay)
+
+    blurt.stop_recording()
+
+    assert calls == []
+    assert blurt.recording is True
+    assert blurt.recording_session_id == 6
     assert blurt._media_paused_session_id == 6
 
 
