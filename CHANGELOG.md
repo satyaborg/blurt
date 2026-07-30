@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.5](https://github.com/satyaborg/blurt/releases/tag/v0.8.5) — 2026-07-30
+
+### Bug fixes
+
+- fix: reduce transcription latency ([dd29f25](https://github.com/satyaborg/blurt/commit/dd29f25f34a1747d1523d858ad9843f37221cb4a))
 ## [0.8.4](https://github.com/satyaborg/blurt/releases/tag/v0.8.4) — 2026-07-30
 
 ### Features
@@ -10,6 +15,7 @@ All notable changes to this project will be documented in this file.
 ### Other
 
 - feat!: toggle recording with shortcut presses ([11ce0d1](https://github.com/satyaborg/blurt/commit/11ce0d1f1df75d62fde30ac8c9552dbd8dc35e75))
+- changelog v0.8.4 ([f9e3d6b](https://github.com/satyaborg/blurt/commit/f9e3d6bc7d73cef4892a363440d8615dedefb7b1))
 ## [0.8.3](https://github.com/satyaborg/blurt/releases/tag/v0.8.3) — 2026-04-07
 
 ### Bug fixes
