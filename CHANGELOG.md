@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.7](https://github.com/satyaborg/blurt/releases/tag/v0.8.7) — 2026-07-30
+
+### Bug fixes
+
+- fix: prioritize coding hints over file names ([09d3331](https://github.com/satyaborg/blurt/commit/09d3331bcaeac8e9940abcbf7704957475a8837e))
 ## [0.8.6](https://github.com/satyaborg/blurt/releases/tag/v0.8.6) — 2026-07-30
 
 ### Bug fixes
@@ -9,6 +14,10 @@ All notable changes to this project will be documented in this file.
 - fix: delay Bluetooth media resume ([6b917f3](https://github.com/satyaborg/blurt/commit/6b917f3fd93ff4b024300ed48de54d6c8f8dd758))
 - fix: transfer paused media ownership ([bcef2ff](https://github.com/satyaborg/blurt/commit/bcef2ffd6234c0bbe47a6075905dca3e92abf29c))
 - fix: respect disabled media pause setting ([c59b7ec](https://github.com/satyaborg/blurt/commit/c59b7ec53c320f091719ad8ba8d8a28153f87eb9))
+
+### Other
+
+- changelog v0.8.6 ([e2b1495](https://github.com/satyaborg/blurt/commit/e2b1495ec19bc04b49975d59ecc944e7a1ca05e3))
 ## [0.8.5](https://github.com/satyaborg/blurt/releases/tag/v0.8.5) — 2026-07-30
 
 ### Bug fixes
