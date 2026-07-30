@@ -12,6 +12,7 @@ License: MIT
 
 import ctypes
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -1190,6 +1191,12 @@ def on_release(key):
     pressed_keys.discard(_normalize(key))
 
 
+def _upgrade_command() -> tuple[list[str], dict[str, str] | None]:
+    if shutil.which("pipx"):
+        return ["pipx", "upgrade", "blurt"], os.environ | {"PIPX_HOME_ALLOW_SPACE": "1"}
+    return [sys.executable, "-m", "pip", "install", "--upgrade", "blurt"], None
+
+
 def _check_update_bg():
     """Background update check — auto-upgrades if a newer version exists."""
     try:
@@ -1207,12 +1214,8 @@ def _check_update_bg():
 
         console.print(f"\n  [bold {C_ACCENT}]updating:[/bold {C_ACCENT}] v{__version__} → v{latest}...")
 
-        if shutil.which("pipx"):
-            cmd = ["pipx", "upgrade", "blurt"]
-        else:
-            cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "blurt"]
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        cmd, env = _upgrade_command()
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env)
         if result.returncode == 0:
             console.print(
                 f"  [bold {C_ACCENT}]updated to v{latest}[/bold {C_ACCENT}] — restart blurt to use the new version"
@@ -1245,14 +1248,9 @@ def cmd_upgrade():
         f"  blurt [bold {C_ACCENT}]v{__version__}[/bold {C_ACCENT}] → [bold {C_ACCENT}]v{latest}[/bold {C_ACCENT}]"
     )
 
-    # Detect install method and upgrade
-    if shutil.which("pipx"):
-        cmd = ["pipx", "upgrade", "blurt"]
-    else:
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "blurt"]
-
+    cmd, env = _upgrade_command()
     console.print(f"  [{C_DIM}]{' '.join(cmd)}[/{C_DIM}]\n")
-    sys.exit(subprocess.call(cmd))
+    sys.exit(subprocess.call(cmd, env=env))
 
 
 def cmd_mode():

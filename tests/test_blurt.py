@@ -195,6 +195,53 @@ def test_log_n_flag(tmp_path, monkeypatch, capsys):
     assert "msg 4" in captured.out
 
 
+# --- Upgrades ---
+
+
+class _UpgradeResponse:
+    def read(self):
+        return b'{"info": {"version": "9999.0.0"}}'
+
+
+def test_upgrade_silences_pipx_home_space_warning(monkeypatch):
+    call = {}
+    monkeypatch.setattr(blurt, "urlopen", lambda *args, **kwargs: _UpgradeResponse())
+    monkeypatch.setattr(blurt.shutil, "which", lambda name: "/opt/homebrew/bin/pipx")
+    monkeypatch.setattr(blurt.subprocess, "call", lambda cmd, **kwargs: call.update(cmd=cmd, **kwargs) or 0)
+
+    with pytest.raises(SystemExit, match="0"):
+        blurt.cmd_upgrade()
+
+    assert call["cmd"] == ["pipx", "upgrade", "blurt"]
+    assert call["env"]["PIPX_HOME_ALLOW_SPACE"] == "1"
+
+
+def test_background_upgrade_silences_pipx_home_space_warning(monkeypatch):
+    call = {}
+
+    class Result:
+        returncode = 0
+
+    monkeypatch.setattr(blurt, "__version__", "0.0.0")
+    monkeypatch.setattr(blurt, "urlopen", lambda *args, **kwargs: _UpgradeResponse())
+    monkeypatch.setattr(blurt.shutil, "which", lambda name: "/opt/homebrew/bin/pipx")
+    monkeypatch.setattr(blurt.subprocess, "run", lambda cmd, **kwargs: call.update(cmd=cmd, **kwargs) or Result())
+
+    blurt._check_update_bg()
+
+    assert call["cmd"] == ["pipx", "upgrade", "blurt"]
+    assert call["env"]["PIPX_HOME_ALLOW_SPACE"] == "1"
+
+
+def test_upgrade_command_falls_back_to_pip(monkeypatch):
+    monkeypatch.setattr(blurt.shutil, "which", lambda name: None)
+
+    cmd, env = blurt._upgrade_command()
+
+    assert cmd == [sys.executable, "-m", "pip", "install", "--upgrade", "blurt"]
+    assert env is None
+
+
 # --- _normalize ---
 
 
