@@ -114,7 +114,6 @@ DEFAULT_MODEL_MODE = "fast"
 SHORTCUT = {keyboard.Key.cmd_r}  # Right Cmd only. Alt: {keyboard.Key.cmd, keyboard.Key.shift}
 SAMPLE_RATE = 16000
 CHANNELS = 1
-RECORDING_TAIL_CAPTURE_S = 0.3
 VAD_LEADING_MARGIN_FRAMES = 2
 VAD_TRAILING_MARGIN_FRAMES = 8
 BLURT_DIR = Path.home() / ".blurt"
@@ -806,6 +805,7 @@ def start_recording():
                     samplerate=SAMPLE_RATE,
                     channels=CHANNELS,
                     dtype="float32",
+                    latency="low",
                     callback=audio_callback,
                 )
                 stream.start()
@@ -996,6 +996,7 @@ def _persist_blurt(wav_path: Path, audio_data: np.ndarray, entry: dict):
 
 def stop_recording():
     global recording, record_requested, stream, rec_status
+    stop_started_at = time.monotonic()
     with lock:
         if not recording:
             return
@@ -1006,8 +1007,6 @@ def stop_recording():
             rec_status.stop()
             rec_status = None
         if stream:
-            # Drain: let the stream capture any trailing audio still in OS/PortAudio buffers
-            time.sleep(RECORDING_TAIL_CAPTURE_S)
             stream.stop()
             stream.close()
             stream = None
@@ -1033,11 +1032,10 @@ def stop_recording():
         if rms < 0.003:
             return
 
-        t0 = time.monotonic()
-
         ts = datetime.now(timezone.utc)
         wav_path = AUDIO_DIR / f"{ts.strftime('%Y%m%d_%H%M%S')}.wav"
 
+        transcription_started_at = time.monotonic()
         with console.status(f"  [{C_ACCENT}]Transcribing...[/{C_ACCENT}]"):
             load_model()
             transcribe_kwargs = dict(
@@ -1053,7 +1051,7 @@ def stop_recording():
             with model_lock:
                 result = whisper_pipe.transcribe(audio_data, **transcribe_kwargs)
 
-        latency_ms = round((time.monotonic() - t0) * 1000)
+        transcription_ms = round((time.monotonic() - transcription_started_at) * 1000)
 
         text = result["text"].strip()
         segments = result.get("segments", [])
@@ -1067,6 +1065,7 @@ def stop_recording():
         word_count = len(text.split())
         total_words += word_count
         paste_transcription(text)
+        latency_ms = round((time.monotonic() - stop_started_at) * 1000)
 
         entry = {
             "ts": ts.isoformat(),
@@ -1074,10 +1073,15 @@ def stop_recording():
             "audio": str(wav_path),
             "duration_s": duration_s,
             "words": word_count,
+            "latency_ms": latency_ms,
+            "transcription_ms": transcription_ms,
         }
         threading.Thread(target=_persist_blurt, args=(wav_path, audio_data, entry), daemon=True).start()
         preview = text[:60] + ("..." if len(text) > 60 else "")
-        console.print(f'  [{C_OK}]\u2713[/{C_OK}] "{preview}" [{C_DIM}]{latency_ms}ms[/{C_DIM}]')
+        console.print(
+            f'  [{C_OK}]\u2713[/{C_OK}] "{preview}" '
+            f"[{C_DIM}]{latency_ms}ms total \u2022 {transcription_ms}ms transcribe[/{C_DIM}]"
+        )
     finally:
         if _media_paused_session_id == session_id:
             time.sleep(1)

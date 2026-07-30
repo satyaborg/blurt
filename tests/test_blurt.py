@@ -893,6 +893,7 @@ def test_doctor_subcommand(monkeypatch, capsys):
 def test_start_recording_pauses_media(monkeypatch):
     """start_recording should call _pause_media."""
     paused = []
+    stream_kwargs = {}
     monkeypatch.setattr(blurt, "_pause_media", lambda session_id: paused.append(session_id))
     monkeypatch.setattr(blurt, "recording", False)
     monkeypatch.setattr(blurt, "record_requested", True)
@@ -905,7 +906,11 @@ def test_start_recording_pauses_media(monkeypatch):
         def start(self):
             pass
 
-    monkeypatch.setattr(blurt.sd, "InputStream", lambda **kw: FakeStream())
+    def fake_input_stream(**kwargs):
+        stream_kwargs.update(kwargs)
+        return FakeStream()
+
+    monkeypatch.setattr(blurt.sd, "InputStream", fake_input_stream)
     monkeypatch.setattr(
         blurt,
         "console",
@@ -914,6 +919,7 @@ def test_start_recording_pauses_media(monkeypatch):
 
     blurt.start_recording()
     assert paused == [1]
+    assert stream_kwargs["latency"] == "low"
 
     # Cleanup
     monkeypatch.setattr(blurt, "recording", False)
@@ -934,7 +940,7 @@ def test_stop_recording_resumes_media(monkeypatch):
     assert resumed == [3]
 
 
-def test_stop_recording_waits_for_trailing_audio(monkeypatch):
+def test_stop_recording_stops_stream_without_delay(monkeypatch):
     sleeps = []
     stopped = []
     closed = []
@@ -954,9 +960,58 @@ def test_stop_recording_waits_for_trailing_audio(monkeypatch):
 
     blurt.stop_recording()
 
-    assert sleeps == [blurt.RECORDING_TAIL_CAPTURE_S]
+    assert sleeps == []
     assert stopped == [True]
     assert closed == [True]
+
+
+def test_stop_recording_reports_end_to_end_latency(monkeypatch, capsys):
+    times = iter([10.0, 10.1, 10.4, 10.6])
+    persisted = []
+    pasted = []
+
+    class FakeWhisper:
+        @staticmethod
+        def transcribe(audio_data, **kwargs):
+            return {
+                "text": "hello world",
+                "segments": [{"no_speech_prob": 0.1, "avg_logprob": -0.2, "compression_ratio": 1.0}],
+            }
+
+    class FakeThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self.target = target
+            self.args = args
+
+        def start(self):
+            if self.target is blurt._persist_blurt:
+                persisted.append(self.args[2])
+
+    monkeypatch.setattr(blurt.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(blurt, "_resume_media", lambda session_id: None)
+    monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "recording_session_id", 5)
+    monkeypatch.setattr(blurt, "stream", type("S", (), {"stop": lambda s: None, "close": lambda s: None})())
+    monkeypatch.setattr(blurt, "rec_status", type("R", (), {"stop": lambda s: None})())
+    monkeypatch.setattr(blurt, "audio_buffer", [np.full((16000, 1), 0.1, dtype=np.float32)])
+    monkeypatch.setattr(blurt, "_media_paused_session_id", None)
+    monkeypatch.setattr(blurt, "load_model", lambda: None)
+    monkeypatch.setattr(blurt, "whisper_pipe", FakeWhisper())
+    monkeypatch.setattr(blurt, "_get_model_repo", lambda: "test/model")
+    monkeypatch.setattr(blurt, "_get_language", lambda: "en")
+    monkeypatch.setattr(blurt, "_vocab_prompt", lambda: None)
+    monkeypatch.setattr(blurt, "_resolve_file_refs", lambda text: text)
+    monkeypatch.setattr(blurt, "paste_transcription", lambda text: pasted.append(text))
+    monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
+
+    blurt.stop_recording()
+
+    captured = capsys.readouterr()
+    assert pasted == ["hello world"]
+    assert persisted[0]["latency_ms"] == 600
+    assert persisted[0]["transcription_ms"] == 300
+    assert "600ms total" in captured.out
+    assert "300ms transcribe" in captured.out
 
 
 def test_stop_recording_does_not_resume_newer_media_session(monkeypatch):
