@@ -1089,6 +1089,56 @@ def test_stop_recording_does_not_resume_newer_media_session(monkeypatch):
     assert blurt._media_paused_session_id == 6
 
 
+def test_rapid_restart_transfers_paused_media_to_new_session(monkeypatch):
+    calls = []
+    fake_lib = type("Lib", (), {"MRMediaRemoteSendCommand": lambda self, cmd, info: calls.append(cmd) or True})()
+
+    class FakeStream:
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    class FakeStatus:
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    def restart_during_media_delay(seconds):
+        assert seconds == blurt.MEDIA_RESUME_DELAY_S
+        blurt.record_requested = True
+        blurt.start_pending = True
+        blurt.start_recording()
+
+    monkeypatch.setattr(blurt, "_mr_lib", fake_lib)
+    monkeypatch.setattr(blurt, "_load_config", lambda: {"pause_media": True})
+    monkeypatch.setattr(blurt, "_is_audio_active", lambda: False)
+    monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "record_requested", False)
+    monkeypatch.setattr(blurt, "start_pending", False)
+    monkeypatch.setattr(blurt, "recording_session_id", 5)
+    monkeypatch.setattr(blurt, "stream", FakeStream())
+    monkeypatch.setattr(blurt, "rec_status", FakeStatus())
+    monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "_media_paused_session_id", 5)
+    monkeypatch.setattr(blurt.sd, "InputStream", lambda **kwargs: FakeStream())
+    monkeypatch.setattr(blurt, "console", type("C", (), {"status": lambda self, message: FakeStatus()})())
+    monkeypatch.setattr(blurt.time, "sleep", restart_during_media_delay)
+
+    blurt.stop_recording()
+
+    assert calls == []
+    assert blurt.recording is True
+    assert blurt.recording_session_id == 6
+    assert blurt._media_paused_session_id == 6
+
+
 def test_shortcut_release_keeps_pending_start(monkeypatch):
     spawned = []
     monkeypatch.setattr(blurt, "pressed_keys", set())

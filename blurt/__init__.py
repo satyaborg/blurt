@@ -747,6 +747,9 @@ def _is_audio_active():
 def _pause_media(session_id: int):
     """Pause media playback if pause_media setting is enabled and audio is active."""
     global _media_paused_session_id
+    if _media_paused_session_id is not None:
+        _media_paused_session_id = session_id
+        return
     if not _load_config().get("pause_media", True):
         return
     if _mr_lib is None:
