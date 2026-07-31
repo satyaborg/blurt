@@ -33,7 +33,7 @@ pipx install blurt
 
 > Requires macOS with Apple Silicon.
 
-First run downloads the Whisper model (~1.6 GB, one-time). macOS will prompt for **Microphone** and **Accessibility** access (System Settings → Privacy & Security).
+First run downloads the selected transcription model once. macOS will prompt for **Microphone** and **Accessibility** access (System Settings → Privacy & Security).
 
 ## Usage
 
@@ -42,6 +42,22 @@ First run downloads the Whisper model (~1.6 GB, one-time). macOS will prompt for
 | Press right **⌘** | Start recording |
 | Press right **⌘** again | Stop, transcribe, paste at cursor |
 | **Ctrl + C** | Quit |
+
+## Models
+
+| Mode | Model | Use case |
+|---|---|---|
+| `fast` | Whisper Base | Default, lowest latency |
+| `accurate` | Whisper Large v3 Turbo | Higher Whisper accuracy |
+| `qwen` | Qwen3-ASR 1.7B 8-bit | Experimental accuracy mode |
+
+```bash
+blurt mode qwen       # use experimental Qwen3-ASR
+blurt mode accurate   # return to Whisper Large v3 Turbo
+blurt mode fast       # return to the default
+```
+
+Qwen mode downloads an approximately 2.5 GB [MLX checkpoint](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit). Custom words and repository file names are passed to Qwen as transcription context. Existing Whisper models remain available when you switch modes.
 
 ## Custom Words
 
@@ -80,7 +96,7 @@ blurt upgrade
 | "Microphone access" prompt doesn't appear | System Settings → Privacy & Security → Microphone → enable your terminal |
 | "Accessibility" error | System Settings → Privacy & Security → Accessibility → enable your terminal |
 | No audio / recording fails | `brew install portaudio` then restart your terminal |
-| Model download stalls | Check disk space (~1.6 GB needed in `~/.cache/huggingface/`) |
+| Model download stalls | Check available space in `~/.cache/huggingface/` for the selected model |
 
 ## Contributing
 
