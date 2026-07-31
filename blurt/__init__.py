@@ -947,6 +947,7 @@ def start_recording():
         start_pending = False
         recording_session_id += 1
         session_id = recording_session_id
+        _play_sound("on")
         # Pause media after stream is running — audio captures immediately, no start delay
         _pause_media(session_id)
         rec_status = console.status(f"  [{C_REC}]Listening...[/{C_REC}]")
@@ -1279,7 +1280,6 @@ def on_press(key):
             should_start = True
 
     if should_start:
-        _play_sound("on")
         threading.Thread(target=start_recording, daemon=True).start()
     elif should_stop:
         threading.Thread(target=stop_recording, daemon=True).start()

@@ -1280,9 +1280,10 @@ def test_doctor_subcommand(monkeypatch, capsys):
 
 def test_start_recording_pauses_media(monkeypatch):
     """start_recording should call _pause_media."""
-    paused = []
+    events = []
     stream_kwargs = {}
-    monkeypatch.setattr(blurt, "_pause_media", lambda session_id: paused.append(session_id))
+    monkeypatch.setattr(blurt, "_play_sound", lambda name: events.append(("sound", name)))
+    monkeypatch.setattr(blurt, "_pause_media", lambda session_id: events.append(("pause", session_id)))
     monkeypatch.setattr(blurt, "recording", False)
     monkeypatch.setattr(blurt, "record_requested", True)
     monkeypatch.setattr(blurt, "start_pending", True)
@@ -1292,7 +1293,7 @@ def test_start_recording_pauses_media(monkeypatch):
 
     class FakeStream:
         def start(self):
-            pass
+            events.append(("stream", "started"))
 
     def fake_input_stream(**kwargs):
         stream_kwargs.update(kwargs)
@@ -1306,7 +1307,7 @@ def test_start_recording_pauses_media(monkeypatch):
     )
 
     blurt.start_recording()
-    assert paused == [1]
+    assert events == [("stream", "started"), ("sound", "on"), ("pause", 1)]
     assert stream_kwargs["latency"] == "low"
 
     # Cleanup
