@@ -101,6 +101,7 @@ def _apply_theme(name=None):
 
 _apply_theme()
 
+
 # --- Config ---
 class ModelModeConfig(TypedDict):
     repo: str
