@@ -1,11 +1,24 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.11](https://github.com/satyaborg/blurt/releases/tag/v0.8.11) — 2026-07-31
+
+### Bug fixes
+
+- fix: start audio capture before feedback ([5556128](https://github.com/satyaborg/blurt/commit/5556128693a75e1e32a3762a9a5aafd717a09312))
+
+### Other
+
+- feat: add experimental qwen transcription mode (#21) ([94a9693](https://github.com/satyaborg/blurt/commit/94a9693de76c441a27d50755a1d0b061316896b9))
 ## [0.8.10](https://github.com/satyaborg/blurt/releases/tag/v0.8.10) — 2026-07-31
 
 ### Bug fixes
 
 - fix: restore file name prompt priority ([4bcc5b2](https://github.com/satyaborg/blurt/commit/4bcc5b2256f67ebd1227be97ec0232d30aa96cf2))
+
+### Other
+
+- changelog v0.8.10 ([cf8a15d](https://github.com/satyaborg/blurt/commit/cf8a15df9b2a3f483458d57c836093b7902ab058))
 ## [0.8.9](https://github.com/satyaborg/blurt/releases/tag/v0.8.9) — 2026-07-31
 
 ### Bug fixes
