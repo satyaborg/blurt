@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.10](https://github.com/satyaborg/blurt/releases/tag/v0.8.10) — 2026-07-31
+
+### Bug fixes
+
+- fix: restore file name prompt priority ([4bcc5b2](https://github.com/satyaborg/blurt/commit/4bcc5b2256f67ebd1227be97ec0232d30aa96cf2))
 ## [0.8.9](https://github.com/satyaborg/blurt/releases/tag/v0.8.9) — 2026-07-31
 
 ### Bug fixes
 
 - fix: install updates from release artifacts ([7f20eba](https://github.com/satyaborg/blurt/commit/7f20eba02d35a55c45347bb6fe4fa647e0fe8f40))
+
+### Other
+
+- changelog v0.8.9 ([0695e24](https://github.com/satyaborg/blurt/commit/0695e24342f665413553e924c2b1b58f8a660e04))
 ## [0.8.8](https://github.com/satyaborg/blurt/releases/tag/v0.8.8) — 2026-07-31
 
 ### Bug fixes
