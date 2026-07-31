@@ -4,7 +4,7 @@ Blurt - Talk to your coding agents.
 
 On-device voice-to-text for macOS Apple Silicon.
 Press the shortcut to start, then press it again to stop - text appears at your cursor.
-Powered by MLX Whisper. No cloud, no API keys.
+Powered by MLX. No cloud, no API keys.
 
 Homepage: https://github.com/satyaborg/blurt
 License: MIT
@@ -22,6 +22,7 @@ import time
 import wave
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Literal, TypedDict
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -101,14 +102,30 @@ def _apply_theme(name=None):
 _apply_theme()
 
 # --- Config ---
-MODEL_MODES = {
-    "accurate": {
-        "repo": "mlx-community/whisper-large-v3-turbo",
-        "label": "best accuracy",
-    },
+ModelBackend = Literal["qwen", "whisper"]
+
+
+class ModelModeConfig(TypedDict):
+    repo: str
+    label: str
+    backend: ModelBackend
+
+
+MODEL_MODES: dict[str, ModelModeConfig] = {
     "fast": {
         "repo": "mlx-community/whisper-base-mlx",
         "label": "lower latency",
+        "backend": "whisper",
+    },
+    "accurate": {
+        "repo": "mlx-community/whisper-large-v3-turbo",
+        "label": "best Whisper accuracy",
+        "backend": "whisper",
+    },
+    "qwen": {
+        "repo": "mlx-community/Qwen3-ASR-1.7B-8bit",
+        "label": "experimental Qwen accuracy",
+        "backend": "qwen",
     },
 }
 DEFAULT_MODEL_MODE = "fast"
@@ -150,7 +167,7 @@ CODING_HINT_TERMS = (
     "Claude Code",
 )
 
-# --- Supported languages (Whisper large-v3-turbo) ---
+# --- Supported transcription languages ---
 SUPPORTED_LANGUAGES = {
     "en": "English",
     "zh": "Chinese",
@@ -342,6 +359,19 @@ def _get_model_repo() -> str:
     return MODEL_MODES[_get_model_mode()]["repo"]
 
 
+def _get_model_backend() -> ModelBackend:
+    """Return the transcription backend for the active model mode."""
+    return MODEL_MODES[_get_model_mode()]["backend"]
+
+
+def _get_model_language(backend: ModelBackend) -> str:
+    """Return the language value expected by a transcription backend."""
+    language = _get_language()
+    if backend == "qwen":
+        return SUPPORTED_LANGUAGES[language]
+    return language
+
+
 # --- State ---
 recording = False
 record_requested = False
@@ -351,8 +381,9 @@ pressed_keys = set()
 stream = None
 lock = threading.Lock()
 model_lock = threading.Lock()
-whisper_pipe = None
+transcription_model: Any | None = None
 loaded_model_repo: str | None = None
+loaded_model_backend: ModelBackend | None = None
 rec_status = None
 total_words = 0
 recording_session_id = 0
@@ -612,52 +643,132 @@ def _model_is_cached(repo_id: str) -> bool:
         from huggingface_hub import scan_cache_dir
 
         cache_info = scan_cache_dir()
-        return any(r.repo_id == repo_id for r in cache_info.repos)
+        return any(
+            file.file_name.endswith((".npz", ".safetensors"))
+            for repo in cache_info.repos
+            if repo.repo_id == repo_id
+            for revision in repo.revisions
+            for file in revision.files
+        )
     except Exception:
         return False
 
 
+def _create_transcription_model(repo_id: str, backend: ModelBackend) -> Any:
+    """Load a transcription model without running inference."""
+    if backend == "qwen":
+        from mlx_audio.stt import load as load_stt_model
+
+        return load_stt_model(repo_id)
+
+    import mlx_whisper
+
+    return mlx_whisper
+
+
+def _qwen_system_prompt(prompt: str) -> str:
+    """Turn Blurt vocabulary hints into a Qwen transcription instruction."""
+    return f"Transcribe only the spoken words. Prefer these spellings for technical terms and file names: {prompt}"
+
+
+def _transcribe_with_model(
+    model: Any,
+    backend: ModelBackend,
+    repo_id: str,
+    audio_data: np.ndarray,
+    prompt: str | None = None,
+) -> dict[str, Any]:
+    """Transcribe audio and normalize backend output."""
+    language = _get_model_language(backend)
+    if backend == "qwen":
+        kwargs: dict[str, Any] = {
+            "language": language,
+            "temperature": 0.0,
+        }
+        if prompt:
+            kwargs["system_prompt"] = _qwen_system_prompt(prompt)
+        result = model.generate(audio_data, **kwargs)
+        return {
+            "text": str(result.text),
+            "segments": list(result.segments or []),
+        }
+
+    kwargs = {
+        "path_or_hf_repo": repo_id,
+        "language": language,
+        "condition_on_previous_text": False,
+        "temperature": 0.0,
+        "without_timestamps": True,
+    }
+    if prompt:
+        kwargs["initial_prompt"] = prompt
+    result = model.transcribe(audio_data, **kwargs)
+    return {
+        "text": str(result.get("text", "")),
+        "segments": list(result.get("segments", []) or []),
+    }
+
+
+def _transcribe(audio_data: np.ndarray, prompt: str | None = None) -> dict[str, Any]:
+    """Transcribe with the active loaded model."""
+    if transcription_model is None or loaded_model_repo is None or loaded_model_backend is None:
+        raise RuntimeError("transcription model is not loaded")
+    return _transcribe_with_model(
+        transcription_model,
+        loaded_model_backend,
+        loaded_model_repo,
+        audio_data,
+        prompt,
+    )
+
+
+def _warm_transcription_model(model: Any, backend: ModelBackend, repo_id: str) -> None:
+    """Run minimal inference to load model weights into memory."""
+    dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    if backend == "qwen":
+        model.generate(
+            dummy,
+            language=_get_model_language(backend),
+            temperature=0.0,
+            max_tokens=1,
+        )
+        return
+
+    model.transcribe(
+        dummy,
+        path_or_hf_repo=repo_id,
+        language=_get_model_language(backend),
+        condition_on_previous_text=False,
+        temperature=0.0,
+        without_timestamps=True,
+    )
+
+
 def load_model():
-    """Lazy-load mlx-whisper on first use."""
-    global whisper_pipe, loaded_model_repo
+    """Lazy-load the active transcription model on first use."""
+    global loaded_model_backend, loaded_model_repo, transcription_model
     repo_id = _get_model_repo()
+    backend = _get_model_backend()
     with model_lock:
-        if whisper_pipe is None or loaded_model_repo != repo_id:
+        if transcription_model is None or loaded_model_repo != repo_id or loaded_model_backend != backend:
             cached = _model_is_cached(repo_id)
             if cached:
                 import huggingface_hub
 
                 huggingface_hub.utils.disable_progress_bars()
-                with console.status("  Loading..."):
-                    import mlx_whisper
-
-                    dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
-                    mlx_whisper.transcribe(
-                        dummy,
-                        path_or_hf_repo=repo_id,
-                        language=_get_language(),
-                        condition_on_previous_text=False,
-                        temperature=0.0,
-                        without_timestamps=True,
-                    )
-                    whisper_pipe = mlx_whisper
-                    loaded_model_repo = repo_id
-                huggingface_hub.utils.enable_progress_bars()
+                try:
+                    with console.status("  Loading..."):
+                        model = _create_transcription_model(repo_id, backend)
+                        _warm_transcription_model(model, backend, repo_id)
+                finally:
+                    huggingface_hub.utils.enable_progress_bars()
             else:
                 console.print(f"  [{C_ACCENT}]Downloading {_get_model_mode()} model (first run only)...[/{C_ACCENT}]")
-                import mlx_whisper
-
-                dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
-                mlx_whisper.transcribe(
-                    dummy,
-                    path_or_hf_repo=repo_id,
-                    language=_get_language(),
-                    condition_on_previous_text=False,
-                    temperature=0.0,
-                    without_timestamps=True,
-                )
-                whisper_pipe = mlx_whisper
-                loaded_model_repo = repo_id
+                model = _create_transcription_model(repo_id, backend)
+                _warm_transcription_model(model, backend, repo_id)
+            transcription_model = model
+            loaded_model_repo = repo_id
+            loaded_model_backend = backend
             _play_sound("ready")
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
             _start_keepalive()
@@ -672,17 +783,9 @@ def _keepalive_loop():
     """Periodically run a dummy transcription to keep the model weights in memory."""
     global _keepalive_timer
     with model_lock:
-        if whisper_pipe is not None:
+        if transcription_model is not None and loaded_model_backend is not None and loaded_model_repo is not None:
             try:
-                dummy = np.zeros(SAMPLE_RATE // 10, dtype=np.float32)  # 0.1s of silence
-                whisper_pipe.transcribe(
-                    dummy,
-                    path_or_hf_repo=loaded_model_repo or _get_model_repo(),
-                    language=_get_language(),
-                    condition_on_previous_text=False,
-                    temperature=0.0,
-                    without_timestamps=True,
-                )
+                _warm_transcription_model(transcription_model, loaded_model_backend, loaded_model_repo)
             except Exception:
                 pass
     _keepalive_timer = threading.Timer(_KEEPALIVE_INTERVAL, _keepalive_loop)
@@ -1043,18 +1146,9 @@ def stop_recording():
         transcription_started_at = time.monotonic()
         with console.status(f"  [{C_ACCENT}]Transcribing...[/{C_ACCENT}]"):
             load_model()
-            transcribe_kwargs = dict(
-                path_or_hf_repo=_get_model_repo(),
-                language=_get_language(),
-                condition_on_previous_text=False,
-                temperature=0.0,
-                without_timestamps=True,
-            )
             prompt = _vocab_prompt()
-            if prompt:
-                transcribe_kwargs["initial_prompt"] = prompt
             with model_lock:
-                result = whisper_pipe.transcribe(audio_data, **transcribe_kwargs)
+                result = _transcribe(audio_data, prompt)
 
         transcription_ms = round((time.monotonic() - transcription_started_at) * 1000)
 
@@ -1343,7 +1437,7 @@ def cmd_mode():
 
     if len(sys.argv) >= 3:
         console.print(f"  [red]unknown mode:[/red] {sys.argv[2]}")
-        console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate[/{C_DIM}]")
+        console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate|qwen[/{C_DIM}]")
         sys.exit(1)
 
     mode = _get_model_mode()
@@ -1351,7 +1445,7 @@ def cmd_mode():
     label = MODEL_MODES[mode]["label"]
     console.print(f"  Mode: [{C_ACCENT}]{mode}[/{C_ACCENT}]")
     console.print(f"  [{C_DIM}]{repo.split('/')[-1]} • {label}[/{C_DIM}]")
-    console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate[/{C_DIM}]")
+    console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate|qwen[/{C_DIM}]")
 
 
 def _set_mode(mode: str):
@@ -1371,11 +1465,15 @@ def _apply_mode_flag() -> bool:
         _set_mode("accurate")
         console.print(f"  [{C_OK}]✓[/{C_OK}] Mode: accurate")
         return True
+    if "--qwen" in sys.argv:
+        _set_mode("qwen")
+        console.print(f"  [{C_OK}]✓[/{C_OK}] Mode: qwen")
+        return True
     if "--mode" in sys.argv:
         idx = sys.argv.index("--mode")
         if idx + 1 >= len(sys.argv) or sys.argv[idx + 1] not in MODEL_MODES:
             console.print("  [red]invalid --mode[/red]")
-            console.print(f"  [{C_DIM}]Usage: blurt --mode fast|accurate[/{C_DIM}]")
+            console.print(f"  [{C_DIM}]Usage: blurt --mode fast|accurate|qwen[/{C_DIM}]")
             sys.exit(1)
         mode = sys.argv[idx + 1]
         _set_mode(mode)
@@ -1492,7 +1590,7 @@ def cmd_doctor():
         except Exception:
             console.print("  [yellow]?[/yellow] could not check accessibility")
 
-    # 5. Whisper model cached
+    # 5. Transcription model cached
     if _model_is_cached(repo_id):
         console.print(f"  [{C_OK}]✓[/{C_OK}] model cached ({repo_id.split('/')[-1]})")
     else:
@@ -1541,9 +1639,9 @@ def show_help():
     console.print("    blurt add <word/phrase>     add word to vocab for better recognition")
     console.print("    blurt rm <word/phrase>      remove word from vocab")
     console.print("    blurt vocab                 list vocab words")
-    console.print("    blurt mode [fast|accurate]  choose transcription speed/accuracy")
-    console.print("    blurt --fast|--accurate     quick-set mode in config.json")
-    console.print("    blurt --mode fast|accurate  quick-set mode in config.json")
+    console.print("    blurt mode [fast|accurate|qwen]  choose transcription model")
+    console.print("    blurt --fast|--accurate|--qwen   quick-set mode in config.json")
+    console.print("    blurt --mode fast|accurate|qwen  quick-set mode in config.json")
     console.print("    blurt pause [on|off]        toggle media pause during recording")
     console.print("    blurt log [-n N]            show recent transcriptions (default 20)")
     console.print("    blurt doctor                run health checks")

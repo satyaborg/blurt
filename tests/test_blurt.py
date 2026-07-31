@@ -1,5 +1,6 @@
 import json
 import sys
+from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -759,6 +760,25 @@ def test_get_model_mode_configured(tmp_path, monkeypatch):
     assert blurt._get_model_repo() == blurt.MODEL_MODES["accurate"]["repo"]
 
 
+def test_get_qwen_model_config(tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"model_mode": "qwen"}\n')
+    assert blurt._get_model_mode() == "qwen"
+    assert blurt._get_model_repo() == "mlx-community/Qwen3-ASR-1.7B-8bit"
+    assert blurt._get_model_backend() == "qwen"
+
+
+def test_get_model_language_for_whisper(monkeypatch):
+    monkeypatch.setattr(blurt, "_get_language", lambda: "en")
+    assert blurt._get_model_language("whisper") == "en"
+
+
+def test_get_model_language_for_qwen(monkeypatch):
+    monkeypatch.setattr(blurt, "_get_language", lambda: "en")
+    assert blurt._get_model_language("qwen") == "English"
+
+
 def test_get_model_mode_invalid_falls_back(tmp_path, monkeypatch, capsys):
     _set_config_paths(monkeypatch, tmp_path)
     cfg = tmp_path / "config.json"
@@ -1005,6 +1025,220 @@ def test_accurate_flag_writes_config(tmp_path, monkeypatch, capsys):
     assert "Mode: accurate" in captured.out
 
 
+@pytest.mark.parametrize("args", [["mode", "qwen"], ["--qwen"], ["--mode", "qwen"]])
+def test_qwen_mode(args, tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", *args]):
+        blurt.main()
+    assert blurt._load_config().get("model_mode") == "qwen"
+    assert "Mode: qwen" in capsys.readouterr().out
+
+
+def test_invalid_mode_flag_exits(capsys):
+    with patch.object(sys, "argv", ["blurt", "--mode", "nope"]):
+        with pytest.raises(SystemExit, match="1"):
+            blurt.main()
+    assert "fast|accurate|qwen" in capsys.readouterr().out
+
+
+# --- Transcription backends ---
+
+
+@pytest.mark.parametrize(
+    ("files", "expected"),
+    [(["config.json"], False), (["config.json", "weights.npz"], True), (["model.safetensors"], True)],
+)
+def test_model_is_cached_requires_weights(files, expected, monkeypatch):
+    import huggingface_hub
+
+    cached_files = [SimpleNamespace(file_name=name) for name in files]
+    repo = SimpleNamespace(
+        repo_id="test/repo",
+        revisions=[SimpleNamespace(files=cached_files)],
+    )
+    monkeypatch.setattr(huggingface_hub, "scan_cache_dir", lambda: SimpleNamespace(repos=[repo]))
+    assert blurt._model_is_cached("test/repo") is expected
+
+
+def test_model_is_cached_handles_scan_failure(monkeypatch):
+    import huggingface_hub
+
+    def fail():
+        raise OSError("failed")
+
+    monkeypatch.setattr(huggingface_hub, "scan_cache_dir", fail)
+    assert blurt._model_is_cached("test/repo") is False
+
+
+@pytest.mark.parametrize("backend", ["whisper", "qwen"])
+def test_create_transcription_model(backend, monkeypatch):
+    expected = object()
+    if backend == "whisper":
+        module = ModuleType("mlx_whisper")
+        monkeypatch.setitem(sys.modules, "mlx_whisper", module)
+        assert blurt._create_transcription_model("test/repo", backend) is module
+        return
+
+    package = ModuleType("mlx_audio")
+    module = ModuleType("mlx_audio.stt")
+    module.load = lambda repo_id: expected
+    monkeypatch.setitem(sys.modules, "mlx_audio", package)
+    monkeypatch.setitem(sys.modules, "mlx_audio.stt", module)
+    assert blurt._create_transcription_model("test/repo", backend) is expected
+
+
+@pytest.mark.parametrize("prompt", [None, "Blurt, MLX"])
+def test_transcribe_with_whisper(prompt, monkeypatch):
+    calls = []
+    model = SimpleNamespace(
+        transcribe=lambda audio, **kwargs: (
+            calls.append((audio, kwargs)) or {"text": "hello", "segments": [{"no_speech_prob": 0.1}]}
+        )
+    )
+    audio = np.ones(16, dtype=np.float32)
+    monkeypatch.setattr(blurt, "_get_model_language", lambda backend: "en")
+
+    result = blurt._transcribe_with_model(model, "whisper", "test/repo", audio, prompt)
+
+    assert result["text"] == "hello"
+    assert calls[0][0] is audio
+    assert calls[0][1]["path_or_hf_repo"] == "test/repo"
+    if prompt:
+        assert calls[0][1]["initial_prompt"] == prompt
+    else:
+        assert "initial_prompt" not in calls[0][1]
+
+
+@pytest.mark.parametrize("prompt", [None, "Blurt, MLX"])
+def test_transcribe_with_qwen(prompt, monkeypatch):
+    calls = []
+    model = SimpleNamespace(
+        generate=lambda audio, **kwargs: (
+            calls.append((audio, kwargs)) or SimpleNamespace(text="hello", segments=[{"text": "hello"}])
+        )
+    )
+    audio = np.ones(16, dtype=np.float32)
+    monkeypatch.setattr(blurt, "_get_model_language", lambda backend: "English")
+
+    result = blurt._transcribe_with_model(model, "qwen", "test/repo", audio, prompt)
+
+    assert result == {"text": "hello", "segments": [{"text": "hello"}]}
+    assert calls[0][0] is audio
+    assert calls[0][1]["language"] == "English"
+    if prompt:
+        assert prompt in calls[0][1]["system_prompt"]
+    else:
+        assert "system_prompt" not in calls[0][1]
+
+
+def test_transcribe_uses_loaded_model(monkeypatch):
+    model = object()
+    monkeypatch.setattr(blurt, "transcription_model", model)
+    monkeypatch.setattr(blurt, "loaded_model_repo", "test/repo")
+    monkeypatch.setattr(blurt, "loaded_model_backend", "qwen")
+    monkeypatch.setattr(
+        blurt,
+        "_transcribe_with_model",
+        lambda *args: {"text": args[4], "segments": []},
+    )
+    result = blurt._transcribe(np.ones(16, dtype=np.float32), "Blurt")
+    assert result["text"] == "Blurt"
+
+
+def test_transcribe_requires_loaded_model(monkeypatch):
+    monkeypatch.setattr(blurt, "transcription_model", None)
+    with pytest.raises(RuntimeError, match="not loaded"):
+        blurt._transcribe(np.ones(16, dtype=np.float32))
+
+
+@pytest.mark.parametrize("backend", ["whisper", "qwen"])
+def test_warm_transcription_model(backend, monkeypatch):
+    calls = []
+    method = "generate" if backend == "qwen" else "transcribe"
+    model = SimpleNamespace(**{method: lambda audio, **kwargs: calls.append((audio, kwargs))})
+    monkeypatch.setattr(blurt, "_get_model_language", lambda selected: "English" if selected == "qwen" else "en")
+
+    blurt._warm_transcription_model(model, backend, "test/repo")
+
+    assert len(calls[0][0]) == blurt.SAMPLE_RATE
+    if backend == "qwen":
+        assert calls[0][1]["max_tokens"] == 1
+    else:
+        assert calls[0][1]["path_or_hf_repo"] == "test/repo"
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_load_model(cached, monkeypatch):
+    events = []
+    model = object()
+    huggingface_hub = ModuleType("huggingface_hub")
+    huggingface_hub.utils = SimpleNamespace(
+        disable_progress_bars=lambda: events.append("disable"),
+        enable_progress_bars=lambda: events.append("enable"),
+    )
+    monkeypatch.setitem(sys.modules, "huggingface_hub", huggingface_hub)
+    monkeypatch.setattr(blurt, "transcription_model", None)
+    monkeypatch.setattr(blurt, "loaded_model_repo", None)
+    monkeypatch.setattr(blurt, "loaded_model_backend", None)
+    monkeypatch.setattr(blurt, "_get_model_repo", lambda: "test/repo")
+    monkeypatch.setattr(blurt, "_get_model_backend", lambda: "qwen")
+    monkeypatch.setattr(blurt, "_model_is_cached", lambda repo: cached)
+    monkeypatch.setattr(blurt, "_create_transcription_model", lambda repo, backend: model)
+    monkeypatch.setattr(blurt, "_warm_transcription_model", lambda *args: events.append("warm"))
+    monkeypatch.setattr(blurt, "_play_sound", lambda name: events.append(name))
+    monkeypatch.setattr(blurt, "_start_keepalive", lambda: events.append("keepalive"))
+
+    blurt.load_model()
+    blurt.load_model()
+
+    assert blurt.transcription_model is model
+    assert blurt.loaded_model_repo == "test/repo"
+    assert blurt.loaded_model_backend == "qwen"
+    assert events.count("warm") == 1
+    assert events[-2:] == ["ready", "keepalive"]
+    if cached:
+        assert events[:2] == ["disable", "warm"]
+        assert "enable" in events
+
+
+@pytest.mark.parametrize("state", ["loaded", "missing", "error"])
+def test_keepalive_warms_loaded_backend(state, monkeypatch):
+    events = []
+
+    class FakeTimer:
+        daemon = False
+
+        def __init__(self, interval, target):
+            events.append((interval, target))
+
+        def start(self):
+            events.append("start")
+
+    model = None if state == "missing" else object()
+    monkeypatch.setattr(blurt, "transcription_model", model)
+    monkeypatch.setattr(blurt, "loaded_model_repo", None if state == "missing" else "test/repo")
+    monkeypatch.setattr(blurt, "loaded_model_backend", None if state == "missing" else "qwen")
+    monkeypatch.setattr(blurt, "_keepalive_timer", None)
+
+    def warm(*args):
+        events.append(args)
+        if state == "error":
+            raise RuntimeError("failed")
+
+    monkeypatch.setattr(blurt, "_warm_transcription_model", warm)
+    monkeypatch.setattr(blurt.threading, "Timer", FakeTimer)
+
+    blurt._keepalive_loop()
+
+    if state == "missing":
+        assert events[0][0] == blurt._KEEPALIVE_INTERVAL
+    else:
+        assert events[0] == (model, "qwen", "test/repo")
+    assert events[-1] == "start"
+
+
 # --- doctor CLI ---
 
 
@@ -1125,14 +1359,6 @@ def test_stop_recording_reports_end_to_end_latency(monkeypatch, capsys):
     persisted = []
     pasted = []
 
-    class FakeWhisper:
-        @staticmethod
-        def transcribe(audio_data, **kwargs):
-            return {
-                "text": "hello world",
-                "segments": [{"no_speech_prob": 0.1, "avg_logprob": -0.2, "compression_ratio": 1.0}],
-            }
-
     class FakeThread:
         def __init__(self, target=None, args=(), daemon=None):
             self.target = target
@@ -1156,9 +1382,14 @@ def test_stop_recording_reports_end_to_end_latency(monkeypatch, capsys):
     monkeypatch.setattr(blurt, "audio_buffer", [np.full((16000, 1), 0.1, dtype=np.float32)])
     monkeypatch.setattr(blurt, "_media_paused_session_id", 5)
     monkeypatch.setattr(blurt, "load_model", lambda: None)
-    monkeypatch.setattr(blurt, "whisper_pipe", FakeWhisper())
-    monkeypatch.setattr(blurt, "_get_model_repo", lambda: "test/model")
-    monkeypatch.setattr(blurt, "_get_language", lambda: "en")
+    monkeypatch.setattr(
+        blurt,
+        "_transcribe",
+        lambda audio_data, prompt: {
+            "text": "hello world",
+            "segments": [{"no_speech_prob": 0.1, "avg_logprob": -0.2, "compression_ratio": 1.0}],
+        },
+    )
     monkeypatch.setattr(blurt, "_vocab_prompt", lambda: None)
     monkeypatch.setattr(blurt, "_resolve_file_refs", lambda text: text)
     monkeypatch.setattr(blurt, "paste_transcription", fake_paste)
