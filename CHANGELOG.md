@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.8](https://github.com/satyaborg/blurt/releases/tag/v0.8.8) — 2026-07-31
+
+### Bug fixes
+
+- fix: verify self-update version ([a7b43c2](https://github.com/satyaborg/blurt/commit/a7b43c22e40f10bc2e321da18a75f84fcff50468))
 ## [0.8.7](https://github.com/satyaborg/blurt/releases/tag/v0.8.7) — 2026-07-30
 
 ### Bug fixes
 
 - fix: prioritize coding hints over file names ([09d3331](https://github.com/satyaborg/blurt/commit/09d3331bcaeac8e9940abcbf7704957475a8837e))
+
+### Other
+
+- changelog v0.8.7 ([d687108](https://github.com/satyaborg/blurt/commit/d687108bb2cd3825d7c950f635e208ed24e943e3))
 ## [0.8.6](https://github.com/satyaborg/blurt/releases/tag/v0.8.6) — 2026-07-30
 
 ### Bug fixes
