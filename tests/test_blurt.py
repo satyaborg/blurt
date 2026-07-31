@@ -206,6 +206,7 @@ class _UpgradeResponse:
 def test_upgrade_silences_pipx_home_space_warning(monkeypatch):
     call = {}
     monkeypatch.setattr(blurt, "urlopen", lambda *args, **kwargs: _UpgradeResponse())
+    monkeypatch.setattr(blurt, "_v", lambda name: "9999.0.0")
     monkeypatch.setattr(blurt.shutil, "which", lambda name: "/opt/homebrew/bin/pipx")
     monkeypatch.setattr(blurt.subprocess, "call", lambda cmd, **kwargs: call.update(cmd=cmd, **kwargs) or 0)
 
@@ -214,6 +215,7 @@ def test_upgrade_silences_pipx_home_space_warning(monkeypatch):
 
     assert call["cmd"] == ["pipx", "upgrade", "blurt"]
     assert call["env"]["PIPX_HOME_ALLOW_SPACE"] == "1"
+    assert call["env"]["PIP_NO_CACHE_DIR"] == "false"
 
 
 def test_background_upgrade_silences_pipx_home_space_warning(monkeypatch):
@@ -223,6 +225,7 @@ def test_background_upgrade_silences_pipx_home_space_warning(monkeypatch):
         returncode = 0
 
     monkeypatch.setattr(blurt, "__version__", "0.0.0")
+    monkeypatch.setattr(blurt, "_v", lambda name: "9999.0.0")
     monkeypatch.setattr(blurt, "urlopen", lambda *args, **kwargs: _UpgradeResponse())
     monkeypatch.setattr(blurt.shutil, "which", lambda name: "/opt/homebrew/bin/pipx")
     monkeypatch.setattr(blurt.subprocess, "run", lambda cmd, **kwargs: call.update(cmd=cmd, **kwargs) or Result())
@@ -231,6 +234,7 @@ def test_background_upgrade_silences_pipx_home_space_warning(monkeypatch):
 
     assert call["cmd"] == ["pipx", "upgrade", "blurt"]
     assert call["env"]["PIPX_HOME_ALLOW_SPACE"] == "1"
+    assert call["env"]["PIP_NO_CACHE_DIR"] == "false"
 
 
 def test_upgrade_command_falls_back_to_pip(monkeypatch):
@@ -238,8 +242,38 @@ def test_upgrade_command_falls_back_to_pip(monkeypatch):
 
     cmd, env = blurt._upgrade_command()
 
-    assert cmd == [sys.executable, "-m", "pip", "install", "--upgrade", "blurt"]
+    assert cmd == [sys.executable, "-m", "pip", "install", "--upgrade", "--no-cache-dir", "blurt"]
     assert env is None
+
+
+def test_background_upgrade_does_not_claim_uninstalled_version(monkeypatch, capsys):
+    class Result:
+        returncode = 0
+
+    monkeypatch.setattr(blurt, "__version__", "0.0.0")
+    monkeypatch.setattr(blurt, "_v", lambda name: "0.0.0")
+    monkeypatch.setattr(blurt, "urlopen", lambda *args, **kwargs: _UpgradeResponse())
+    monkeypatch.setattr(blurt.shutil, "which", lambda name: "/opt/homebrew/bin/pipx")
+    monkeypatch.setattr(blurt.subprocess, "run", lambda *args, **kwargs: Result())
+
+    blurt._check_update_bg()
+
+    output = capsys.readouterr().out
+    assert "updated to" not in output
+    assert "v9999.0.0 was not installed" in output
+
+
+def test_upgrade_fails_when_new_version_was_not_installed(monkeypatch, capsys):
+    monkeypatch.setattr(blurt, "__version__", "0.0.0")
+    monkeypatch.setattr(blurt, "_v", lambda name: "0.0.0")
+    monkeypatch.setattr(blurt, "urlopen", lambda *args, **kwargs: _UpgradeResponse())
+    monkeypatch.setattr(blurt.shutil, "which", lambda name: "/opt/homebrew/bin/pipx")
+    monkeypatch.setattr(blurt.subprocess, "call", lambda *args, **kwargs: 0)
+
+    with pytest.raises(SystemExit, match="1"):
+        blurt.cmd_upgrade()
+
+    assert "v9999.0.0 was not installed" in capsys.readouterr().out
 
 
 # --- _normalize ---

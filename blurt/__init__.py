@@ -1197,12 +1197,19 @@ def on_release(key):
 
 def _upgrade_command() -> tuple[list[str], dict[str, str] | None]:
     if shutil.which("pipx"):
-        return ["pipx", "upgrade", "blurt"], os.environ | {"PIPX_HOME_ALLOW_SPACE": "1"}
-    return [sys.executable, "-m", "pip", "install", "--upgrade", "blurt"], None
+        env = os.environ | {"PIPX_HOME_ALLOW_SPACE": "1", "PIP_NO_CACHE_DIR": "false"}
+        return ["pipx", "upgrade", "blurt"], env
+    return [sys.executable, "-m", "pip", "install", "--upgrade", "--no-cache-dir", "blurt"], None
+
+
+def _is_version_installed(version: str) -> bool:
+    from packaging.version import Version
+
+    return Version(_v("blurt")) >= Version(version)
 
 
 def _check_update_bg():
-    """Background update check — auto-upgrades if a newer version exists."""
+    """Auto-upgrade in the background when a newer version exists."""
     try:
         # Skip auto-upgrade for dev/editable installs
         if ".dev" in __version__ or "+" in __version__:
@@ -1220,12 +1227,14 @@ def _check_update_bg():
 
         cmd, env = _upgrade_command()
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
-        if result.returncode == 0:
+        if result.returncode == 0 and _is_version_installed(latest):
             console.print(
-                f"  [bold {C_ACCENT}]updated to v{latest}[/bold {C_ACCENT}] — restart blurt to use the new version"
+                f"  [bold {C_ACCENT}]updated to v{latest}[/bold {C_ACCENT}]; restart blurt to use the new version"
             )
+        elif result.returncode == 0:
+            console.print(f"  [{C_DIM}]v{latest} was not installed; update will retry on next launch[/{C_DIM}]")
         else:
-            console.print(f"  [{C_DIM}]auto-update failed — run `blurt upgrade` manually[/{C_DIM}]")
+            console.print(f"  [{C_DIM}]auto-update failed; run `blurt upgrade` manually[/{C_DIM}]")
     except Exception:
         pass
 
@@ -1254,7 +1263,11 @@ def cmd_upgrade():
 
     cmd, env = _upgrade_command()
     console.print(f"  [{C_DIM}]{' '.join(cmd)}[/{C_DIM}]\n")
-    sys.exit(subprocess.call(cmd, env=env))
+    returncode = subprocess.call(cmd, env=env)
+    if returncode == 0 and not _is_version_installed(latest):
+        console.print(f"\n  [red]v{latest} was not installed; run `blurt upgrade` again.[/red]\n")
+        returncode = 1
+    sys.exit(returncode)
 
 
 def cmd_mode():
