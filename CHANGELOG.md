@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.9](https://github.com/satyaborg/blurt/releases/tag/v0.8.9) — 2026-07-31
+
+### Bug fixes
+
+- fix: install updates from release artifacts ([7f20eba](https://github.com/satyaborg/blurt/commit/7f20eba02d35a55c45347bb6fe4fa647e0fe8f40))
 ## [0.8.8](https://github.com/satyaborg/blurt/releases/tag/v0.8.8) — 2026-07-31
 
 ### Bug fixes
 
 - fix: verify self-update version ([a7b43c2](https://github.com/satyaborg/blurt/commit/a7b43c22e40f10bc2e321da18a75f84fcff50468))
+
+### Other
+
+- changelog v0.8.8 ([ff52058](https://github.com/satyaborg/blurt/commit/ff52058a99c1a73f15713a8967f0d98404fa3064))
 ## [0.8.7](https://github.com/satyaborg/blurt/releases/tag/v0.8.7) — 2026-07-30
 
 ### Bug fixes
