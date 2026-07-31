@@ -55,7 +55,7 @@ blurt mode fast       # use the default 0.6B model
 blurt mode accurate   # use the higher-accuracy 1.7B model
 ```
 
-The fast mode downloads an approximately 1 GB [MLX checkpoint](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit), while accurate mode downloads an approximately 2.5 GB [MLX checkpoint](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit). Custom words and repository file names are passed to Qwen as transcription context.
+The fast mode downloads an approximately 1 GB [MLX checkpoint](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit), while accurate mode downloads an approximately 2.5 GB [MLX checkpoint](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit). Custom words and filename-shaped repository terms are passed to Qwen as transcription context.
 
 ## Custom Words
 

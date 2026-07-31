@@ -17,9 +17,11 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import wave
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypedDict
@@ -138,6 +140,9 @@ PASTE_RETRY_DELAY_S = 0.2
 PROMPT_MAX_CHARS = 700
 PROMPT_MAX_KEYWORD_CHARS = 420
 PROMPT_MAX_FILES = 32
+PROMPT_MAX_FILE_NAME_CHARS = 100
+REPETITIVE_TEXT_MIN_BYTES = 80
+REPETITIVE_TEXT_COMPRESSION_RATIO = 2.4
 CODING_HINT_TERMS = (
     "python",
     "pytest",
@@ -159,106 +164,36 @@ CODING_HINT_TERMS = (
 
 # --- Supported transcription languages ---
 SUPPORTED_LANGUAGES = {
-    "en": "English",
     "zh": "Chinese",
-    "de": "German",
-    "es": "Spanish",
-    "ru": "Russian",
-    "ko": "Korean",
-    "fr": "French",
-    "ja": "Japanese",
-    "pt": "Portuguese",
-    "tr": "Turkish",
-    "pl": "Polish",
-    "ca": "Catalan",
-    "nl": "Dutch",
-    "ar": "Arabic",
-    "sv": "Swedish",
-    "it": "Italian",
-    "id": "Indonesian",
-    "hi": "Hindi",
-    "fi": "Finnish",
-    "vi": "Vietnamese",
-    "he": "Hebrew",
-    "uk": "Ukrainian",
-    "el": "Greek",
-    "ms": "Malay",
-    "cs": "Czech",
-    "ro": "Romanian",
-    "da": "Danish",
-    "hu": "Hungarian",
-    "ta": "Tamil",
-    "no": "Norwegian",
-    "th": "Thai",
-    "ur": "Urdu",
-    "hr": "Croatian",
-    "bg": "Bulgarian",
-    "lt": "Lithuanian",
-    "la": "Latin",
-    "mi": "Maori",
-    "ml": "Malayalam",
-    "cy": "Welsh",
-    "sk": "Slovak",
-    "te": "Telugu",
-    "fa": "Persian",
-    "lv": "Latvian",
-    "bn": "Bengali",
-    "sr": "Serbian",
-    "az": "Azerbaijani",
-    "sl": "Slovenian",
-    "kn": "Kannada",
-    "et": "Estonian",
-    "mk": "Macedonian",
-    "br": "Breton",
-    "eu": "Basque",
-    "is": "Icelandic",
-    "hy": "Armenian",
-    "ne": "Nepali",
-    "mn": "Mongolian",
-    "bs": "Bosnian",
-    "kk": "Kazakh",
-    "sq": "Albanian",
-    "sw": "Swahili",
-    "gl": "Galician",
-    "mr": "Marathi",
-    "pa": "Punjabi",
-    "si": "Sinhala",
-    "km": "Khmer",
-    "sn": "Shona",
-    "yo": "Yoruba",
-    "so": "Somali",
-    "af": "Afrikaans",
-    "oc": "Occitan",
-    "ka": "Georgian",
-    "be": "Belarusian",
-    "tg": "Tajik",
-    "sd": "Sindhi",
-    "gu": "Gujarati",
-    "am": "Amharic",
-    "yi": "Yiddish",
-    "lo": "Lao",
-    "uz": "Uzbek",
-    "fo": "Faroese",
-    "ht": "Haitian Creole",
-    "ps": "Pashto",
-    "tk": "Turkmen",
-    "nn": "Nynorsk",
-    "mt": "Maltese",
-    "sa": "Sanskrit",
-    "lb": "Luxembourgish",
-    "my": "Myanmar",
-    "bo": "Tibetan",
-    "tl": "Tagalog",
-    "mg": "Malagasy",
-    "as": "Assamese",
-    "tt": "Tatar",
-    "haw": "Hawaiian",
-    "ln": "Lingala",
-    "ha": "Hausa",
-    "ba": "Bashkir",
-    "jw": "Javanese",
-    "su": "Sundanese",
+    "en": "English",
     "yue": "Cantonese",
+    "ar": "Arabic",
+    "de": "German",
+    "fr": "French",
+    "es": "Spanish",
+    "pt": "Portuguese",
+    "id": "Indonesian",
+    "it": "Italian",
+    "ko": "Korean",
+    "ru": "Russian",
+    "th": "Thai",
+    "vi": "Vietnamese",
+    "ja": "Japanese",
+    "tr": "Turkish",
+    "hi": "Hindi",
+    "ms": "Malay",
+    "nl": "Dutch",
+    "sv": "Swedish",
+    "da": "Danish",
+    "fi": "Finnish",
+    "pl": "Polish",
+    "cs": "Czech",
+    "fil": "Filipino",
+    "fa": "Persian",
+    "el": "Greek",
+    "ro": "Romanian",
+    "hu": "Hungarian",
+    "mk": "Macedonian",
 }
 
 
@@ -308,7 +243,7 @@ def _load_config() -> dict:
                 if config.get("model_mode") == "qwen":
                     config["model_mode"] = "accurate"
                     try:
-                        CONFIG_PATH.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+                        _save_config(config)
                     except OSError:
                         pass
                 return config
@@ -324,7 +259,7 @@ def _load_config() -> dict:
         config["model_mode"] = "accurate"
     try:
         ensure_dirs()
-        CONFIG_PATH.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+        _save_config(config)
     except Exception:
         pass
     return config
@@ -442,8 +377,23 @@ def ensure_dirs():
 
 def _save_config(config: dict):
     """Write settings to config.json."""
-    ensure_dirs()
-    CONFIG_PATH.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=CONFIG_PATH.parent,
+            prefix=f".{CONFIG_PATH.name}.",
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_file.write(json.dumps(config, indent=2, sort_keys=True) + "\n")
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.replace(temp_path, CONFIG_PATH)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
 
 # --- Vocab ---
@@ -518,9 +468,14 @@ def _file_basenames() -> list[str]:
     return names
 
 
+def _is_safe_prompt_file_name(name: str) -> bool:
+    """Allow filename-shaped model hints without instruction-like punctuation or whitespace."""
+    return len(name) <= PROMPT_MAX_FILE_NAME_CHARS and re.fullmatch(r"[\w@+.-]+", name) is not None
+
+
 def _prompt_file_names() -> list[str]:
     """Choose a capped, coding-relevant set of file names for transcription context."""
-    names = _file_basenames()
+    names = [name for name in _file_basenames() if _is_safe_prompt_file_name(name)]
     if not names:
         return []
 
@@ -657,8 +612,8 @@ def _transcribe_with_model(
     model: Any,
     audio_data: np.ndarray,
     prompt: str | None = None,
-) -> dict[str, Any]:
-    """Transcribe audio and normalize the Qwen output."""
+) -> str:
+    """Transcribe audio with Qwen."""
     kwargs: dict[str, Any] = {
         "language": _get_model_language(),
         "temperature": 0.0,
@@ -666,10 +621,10 @@ def _transcribe_with_model(
     if prompt:
         kwargs["system_prompt"] = _qwen_system_prompt(prompt)
     result = model.generate(audio_data, **kwargs)
-    return {"text": str(result.text)}
+    return str(result.text)
 
 
-def _transcribe(audio_data: np.ndarray, prompt: str | None = None) -> dict[str, Any]:
+def _transcribe(audio_data: np.ndarray, prompt: str | None = None) -> str:
     """Transcribe with the active loaded model."""
     if transcription_model is None:
         raise RuntimeError("transcription model is not loaded")
@@ -898,13 +853,21 @@ def start_recording():
 _PROMPT_ECHO_THRESHOLD = 0.8  # fraction of transcribed words found in prompt → likely echo
 
 
+def _is_repetitive_transcript(text: str) -> bool:
+    """Reject long, highly compressible decoder loops."""
+    text_bytes = text.encode("utf-8")
+    if len(text_bytes) < REPETITIVE_TEXT_MIN_BYTES:
+        return False
+    return len(text_bytes) / len(zlib.compress(text_bytes)) > REPETITIVE_TEXT_COMPRESSION_RATIO
+
+
 def _is_prompt_echo(text: str, prompt: str | None) -> bool:
     """Check if transcription is just the vocabulary and file context echoed back."""
     if not prompt:
         return False
 
     def _words(s: str) -> set[str]:
-        return set(s.lower().replace(",", " ").split())
+        return set(re.findall(r"\w+", s.lower()))
 
     prompt_words = _words(prompt)
     text_words = _words(text)
@@ -1076,13 +1039,12 @@ def stop_recording():
             load_model()
             prompt = _vocab_prompt()
             with model_lock:
-                result = _transcribe(audio_data, prompt)
+                text = _transcribe(audio_data, prompt).strip()
 
         transcription_ms = round((time.monotonic() - transcription_started_at) * 1000)
 
-        text = result["text"].strip()
-
-        if not text or _is_prompt_echo(text, prompt):
+        system_prompt = _qwen_system_prompt(prompt) if prompt else None
+        if not text or _is_repetitive_transcript(text) or _is_prompt_echo(text, system_prompt):
             return
 
         text = _resolve_file_refs(text)
@@ -1383,10 +1345,6 @@ def _set_mode(mode: str):
 
 def _apply_mode_flag() -> bool:
     """Handle quick mode-setting flags and exit after writing config."""
-    if "--qwen" in sys.argv:
-        console.print("  [red]invalid mode:[/red] qwen")
-        console.print(f"  [{C_DIM}]Usage: blurt --mode fast|accurate[/{C_DIM}]")
-        sys.exit(1)
     if "--fast" in sys.argv:
         _set_mode("fast")
         console.print(f"  [{C_OK}]✓[/{C_OK}] Mode: fast")
@@ -1635,8 +1593,9 @@ def main():
             console.print(f"  [{C_DIM}]Usage: blurt pause on|off[/{C_DIM}]")
         return
 
-    if len(sys.argv) >= 2 and not sys.argv[1].startswith("-"):
-        console.print(f"  [red]unknown command:[/red] {sys.argv[1]}")
+    if len(sys.argv) >= 2:
+        argument_type = "option" if sys.argv[1].startswith("-") else "command"
+        console.print(f"  [red]unknown {argument_type}:[/red] {sys.argv[1]}")
         show_help()
         sys.exit(1)
 

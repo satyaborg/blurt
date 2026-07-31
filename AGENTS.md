@@ -38,7 +38,7 @@ Single package: `blurt/__init__.py` contains everything. No submodules.
 **Key design details:**
 - The fast (`Qwen3-ASR-0.6B-8bit`) and accurate (`Qwen3-ASR-1.7B-8bit`) models are lazy-loaded and pre-warmed in a background thread at startup
 - Transcription paste works by saving/restoring clipboard (pbcopy/pbpaste) and simulating ⌘V via osascript
-- Silence is filtered using audio amplitude and RMS thresholds; prompt echo detection filters outputs copied from transcription context
+- Silence is filtered using audio amplitude and RMS thresholds; prompt echo and repetition detection filter unsafe output before paste
 - Global mutable state (`recording`, `audio_buffer`, `stream`, etc.) protected by `threading.Lock`
 - Versioning via `setuptools-scm` (git tags), no hardcoded version
 - Sound feedback files bundled in `blurt/sounds/*.mp3`
