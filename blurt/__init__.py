@@ -1195,17 +1195,61 @@ def on_release(key):
     pressed_keys.discard(_normalize(key))
 
 
+def _is_pipx_install() -> bool:
+    return (Path(sys.prefix) / "pipx_metadata.json").is_file()
+
+
 def _upgrade_command() -> tuple[list[str], dict[str, str] | None]:
-    if shutil.which("pipx"):
+    if _is_pipx_install() and shutil.which("pipx"):
         env = os.environ | {"PIPX_HOME_ALLOW_SPACE": "1", "PIP_NO_CACHE_DIR": "false"}
         return ["pipx", "upgrade", "blurt"], env
     return [sys.executable, "-m", "pip", "install", "--upgrade", "--no-cache-dir", "blurt"], None
 
 
 def _is_version_installed(version: str) -> bool:
-    from packaging.version import Version
+    from importlib.metadata import PackageNotFoundError
 
-    return Version(_v("blurt")) >= Version(version)
+    from packaging.version import InvalidVersion, Version
+
+    try:
+        return Version(_v("blurt")) >= Version(version)
+    except (InvalidVersion, PackageNotFoundError):
+        return False
+
+
+def _release_artifact_url(version: str) -> str | None:
+    try:
+        resp = urlopen(f"https://pypi.org/pypi/blurt/{version}/json", timeout=10)
+        artifacts = json.loads(resp.read())["urls"]
+    except (URLError, OSError, json.JSONDecodeError, KeyError):
+        return None
+
+    if not isinstance(artifacts, list):
+        return None
+
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        url = artifact.get("url")
+        filename = artifact.get("filename", "")
+        if artifact.get("packagetype") == "bdist_wheel" and filename.endswith("-py3-none-any.whl"):
+            return url if isinstance(url, str) else None
+
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        url = artifact.get("url")
+        if artifact.get("packagetype") == "sdist":
+            return url if isinstance(url, str) else None
+
+    return None
+
+
+def _direct_upgrade_command(version: str) -> list[str] | None:
+    artifact_url = _release_artifact_url(version)
+    if artifact_url is None:
+        return None
+    return [sys.executable, "-m", "pip", "install", "--upgrade", "--no-cache-dir", artifact_url]
 
 
 def _check_update_bg():
@@ -1227,7 +1271,14 @@ def _check_update_bg():
 
         cmd, env = _upgrade_command()
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
-        if result.returncode == 0 and _is_version_installed(latest):
+        if not _is_version_installed(latest):
+            direct_cmd = _direct_upgrade_command(latest)
+            if direct_cmd is not None:
+                result = subprocess.run(direct_cmd, capture_output=True, text=True)
+                if result.returncode == 0 and cmd[0] == "pipx":
+                    subprocess.run(cmd, capture_output=True, text=True, env=env)
+
+        if _is_version_installed(latest):
             console.print(
                 f"  [bold {C_ACCENT}]updated to v{latest}[/bold {C_ACCENT}]; restart blurt to use the new version"
             )
@@ -1264,7 +1315,17 @@ def cmd_upgrade():
     cmd, env = _upgrade_command()
     console.print(f"  [{C_DIM}]{' '.join(cmd)}[/{C_DIM}]\n")
     returncode = subprocess.call(cmd, env=env)
-    if returncode == 0 and not _is_version_installed(latest):
+    if not _is_version_installed(latest):
+        direct_cmd = _direct_upgrade_command(latest)
+        if direct_cmd is not None:
+            console.print(f"\n  [{C_DIM}]installing v{latest} from its PyPI release artifact[/{C_DIM}]\n")
+            returncode = subprocess.call(direct_cmd)
+            if returncode == 0 and cmd[0] == "pipx":
+                subprocess.call(cmd, env=env)
+
+    if _is_version_installed(latest):
+        returncode = 0
+    elif returncode == 0:
         console.print(f"\n  [red]v{latest} was not installed; run `blurt upgrade` again.[/red]\n")
         returncode = 1
     sys.exit(returncode)
