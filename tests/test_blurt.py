@@ -490,16 +490,6 @@ def test_vocab_prompt_includes_file_basenames(tmp_path, monkeypatch):
     assert "pytest" in prompt
 
 
-def test_vocab_prompt_prioritizes_coding_terms_over_file_names(tmp_path, monkeypatch):
-    monkeypatch.setattr(blurt, "VOCAB_PATH", tmp_path / "missing.txt")
-    monkeypatch.setattr(blurt, "_file_index", [f"very_long_file_name_{i}.py" for i in range(32)])
-    monkeypatch.setattr(blurt, "_file_index_time", __import__("time").monotonic())
-
-    prompt = blurt._vocab_prompt()
-
-    assert all(term in prompt for term in blurt.CODING_HINT_TERMS)
-
-
 def test_vocab_prompt_file_only_no_vocab(tmp_path, monkeypatch):
     monkeypatch.setattr(blurt, "VOCAB_PATH", tmp_path / "missing.txt")
     monkeypatch.setattr(blurt, "_file_index", ["README.md"])

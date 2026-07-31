@@ -477,7 +477,7 @@ def _vocab_prompt():
     if not file_names:
         return ", ".join(words)
 
-    keywords = _dedupe_preserve_order(words + list(CODING_HINT_TERMS) + file_names)
+    keywords = _dedupe_preserve_order(words + file_names + list(CODING_HINT_TERMS))
     keyword_tail = _join_with_budget(keywords, PROMPT_MAX_KEYWORD_CHARS)
     examples = _coding_prompt_examples(file_names)
 
