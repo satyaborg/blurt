@@ -47,17 +47,15 @@ First run downloads the selected transcription model once. macOS will prompt for
 
 | Mode | Model | Use case |
 |---|---|---|
-| `fast` | Whisper Base | Default, lowest latency |
-| `accurate` | Whisper Large v3 Turbo | Higher Whisper accuracy |
-| `qwen` | Qwen3-ASR 1.7B 8-bit | Experimental accuracy mode |
+| `fast` | Qwen3-ASR 0.6B 8-bit | Default, lowest latency |
+| `accurate` | Qwen3-ASR 1.7B 8-bit | Higher accuracy |
 
 ```bash
-blurt mode qwen       # use experimental Qwen3-ASR
-blurt mode accurate   # return to Whisper Large v3 Turbo
-blurt mode fast       # return to the default
+blurt mode fast       # use the default 0.6B model
+blurt mode accurate   # use the higher-accuracy 1.7B model
 ```
 
-Qwen mode downloads an approximately 2.5 GB [MLX checkpoint](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit). Custom words and repository file names are passed to Qwen as transcription context. Existing Whisper models remain available when you switch modes.
+The fast mode downloads an approximately 1 GB [MLX checkpoint](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit), while accurate mode downloads an approximately 2.5 GB [MLX checkpoint](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit). Custom words and filename-shaped repository terms are passed to Qwen as transcription context.
 
 ## Custom Words
 

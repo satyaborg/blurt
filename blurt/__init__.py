@@ -17,12 +17,14 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import wave
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal, TypedDict
+from typing import Any, TypedDict
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -101,31 +103,21 @@ def _apply_theme(name=None):
 
 _apply_theme()
 
+
 # --- Config ---
-ModelBackend = Literal["qwen", "whisper"]
-
-
 class ModelModeConfig(TypedDict):
     repo: str
     label: str
-    backend: ModelBackend
 
 
 MODEL_MODES: dict[str, ModelModeConfig] = {
     "fast": {
-        "repo": "mlx-community/whisper-base-mlx",
+        "repo": "mlx-community/Qwen3-ASR-0.6B-8bit",
         "label": "lower latency",
-        "backend": "whisper",
     },
     "accurate": {
-        "repo": "mlx-community/whisper-large-v3-turbo",
-        "label": "best Whisper accuracy",
-        "backend": "whisper",
-    },
-    "qwen": {
         "repo": "mlx-community/Qwen3-ASR-1.7B-8bit",
-        "label": "experimental Qwen accuracy",
-        "backend": "qwen",
+        "label": "higher accuracy",
     },
 }
 DEFAULT_MODEL_MODE = "fast"
@@ -145,9 +137,12 @@ LEGACY_CONFIG_PATH = BLURT_DIR / "config.toml"
 CLIPBOARD_PASTE_SETTLE_S = 0.05
 CLIPBOARD_RESTORE_DELAY_S = 0.05
 PASTE_RETRY_DELAY_S = 0.2
-PROMPT_MAX_CHARS = 700  # stay well under Whisper's prompt window
+PROMPT_MAX_CHARS = 700
 PROMPT_MAX_KEYWORD_CHARS = 420
 PROMPT_MAX_FILES = 32
+PROMPT_MAX_FILE_NAME_CHARS = 100
+REPETITIVE_TEXT_MIN_BYTES = 80
+REPETITIVE_TEXT_COMPRESSION_RATIO = 2.4
 CODING_HINT_TERMS = (
     "python",
     "pytest",
@@ -169,106 +164,36 @@ CODING_HINT_TERMS = (
 
 # --- Supported transcription languages ---
 SUPPORTED_LANGUAGES = {
-    "en": "English",
     "zh": "Chinese",
-    "de": "German",
-    "es": "Spanish",
-    "ru": "Russian",
-    "ko": "Korean",
-    "fr": "French",
-    "ja": "Japanese",
-    "pt": "Portuguese",
-    "tr": "Turkish",
-    "pl": "Polish",
-    "ca": "Catalan",
-    "nl": "Dutch",
-    "ar": "Arabic",
-    "sv": "Swedish",
-    "it": "Italian",
-    "id": "Indonesian",
-    "hi": "Hindi",
-    "fi": "Finnish",
-    "vi": "Vietnamese",
-    "he": "Hebrew",
-    "uk": "Ukrainian",
-    "el": "Greek",
-    "ms": "Malay",
-    "cs": "Czech",
-    "ro": "Romanian",
-    "da": "Danish",
-    "hu": "Hungarian",
-    "ta": "Tamil",
-    "no": "Norwegian",
-    "th": "Thai",
-    "ur": "Urdu",
-    "hr": "Croatian",
-    "bg": "Bulgarian",
-    "lt": "Lithuanian",
-    "la": "Latin",
-    "mi": "Maori",
-    "ml": "Malayalam",
-    "cy": "Welsh",
-    "sk": "Slovak",
-    "te": "Telugu",
-    "fa": "Persian",
-    "lv": "Latvian",
-    "bn": "Bengali",
-    "sr": "Serbian",
-    "az": "Azerbaijani",
-    "sl": "Slovenian",
-    "kn": "Kannada",
-    "et": "Estonian",
-    "mk": "Macedonian",
-    "br": "Breton",
-    "eu": "Basque",
-    "is": "Icelandic",
-    "hy": "Armenian",
-    "ne": "Nepali",
-    "mn": "Mongolian",
-    "bs": "Bosnian",
-    "kk": "Kazakh",
-    "sq": "Albanian",
-    "sw": "Swahili",
-    "gl": "Galician",
-    "mr": "Marathi",
-    "pa": "Punjabi",
-    "si": "Sinhala",
-    "km": "Khmer",
-    "sn": "Shona",
-    "yo": "Yoruba",
-    "so": "Somali",
-    "af": "Afrikaans",
-    "oc": "Occitan",
-    "ka": "Georgian",
-    "be": "Belarusian",
-    "tg": "Tajik",
-    "sd": "Sindhi",
-    "gu": "Gujarati",
-    "am": "Amharic",
-    "yi": "Yiddish",
-    "lo": "Lao",
-    "uz": "Uzbek",
-    "fo": "Faroese",
-    "ht": "Haitian Creole",
-    "ps": "Pashto",
-    "tk": "Turkmen",
-    "nn": "Nynorsk",
-    "mt": "Maltese",
-    "sa": "Sanskrit",
-    "lb": "Luxembourgish",
-    "my": "Myanmar",
-    "bo": "Tibetan",
-    "tl": "Tagalog",
-    "mg": "Malagasy",
-    "as": "Assamese",
-    "tt": "Tatar",
-    "haw": "Hawaiian",
-    "ln": "Lingala",
-    "ha": "Hausa",
-    "ba": "Bashkir",
-    "jw": "Javanese",
-    "su": "Sundanese",
+    "en": "English",
     "yue": "Cantonese",
+    "ar": "Arabic",
+    "de": "German",
+    "fr": "French",
+    "es": "Spanish",
+    "pt": "Portuguese",
+    "id": "Indonesian",
+    "it": "Italian",
+    "ko": "Korean",
+    "ru": "Russian",
+    "th": "Thai",
+    "vi": "Vietnamese",
+    "ja": "Japanese",
+    "tr": "Turkish",
+    "hi": "Hindi",
+    "ms": "Malay",
+    "nl": "Dutch",
+    "sv": "Swedish",
+    "da": "Danish",
+    "fi": "Finnish",
+    "pl": "Polish",
+    "cs": "Czech",
+    "fil": "Filipino",
+    "fa": "Persian",
+    "el": "Greek",
+    "ro": "Romanian",
+    "hu": "Hungarian",
+    "mk": "Macedonian",
 }
 
 
@@ -315,6 +240,12 @@ def _load_config() -> dict:
             if isinstance(data, dict):
                 config = defaults.copy()
                 config.update(data)
+                if config.get("model_mode") == "qwen":
+                    config["model_mode"] = "accurate"
+                    try:
+                        _save_config(config)
+                    except OSError:
+                        pass
                 return config
             return defaults
         except Exception:
@@ -328,7 +259,7 @@ def _load_config() -> dict:
         config["model_mode"] = "accurate"
     try:
         ensure_dirs()
-        CONFIG_PATH.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+        _save_config(config)
     except Exception:
         pass
     return config
@@ -359,17 +290,9 @@ def _get_model_repo() -> str:
     return MODEL_MODES[_get_model_mode()]["repo"]
 
 
-def _get_model_backend() -> ModelBackend:
-    """Return the transcription backend for the active model mode."""
-    return MODEL_MODES[_get_model_mode()]["backend"]
-
-
-def _get_model_language(backend: ModelBackend) -> str:
-    """Return the language value expected by a transcription backend."""
-    language = _get_language()
-    if backend == "qwen":
-        return SUPPORTED_LANGUAGES[language]
-    return language
+def _get_model_language() -> str:
+    """Return the configured language name expected by Qwen."""
+    return SUPPORTED_LANGUAGES[_get_language()]
 
 
 # --- State ---
@@ -383,7 +306,6 @@ lock = threading.Lock()
 model_lock = threading.Lock()
 transcription_model: Any | None = None
 loaded_model_repo: str | None = None
-loaded_model_backend: ModelBackend | None = None
 rec_status = None
 total_words = 0
 recording_session_id = 0
@@ -455,8 +377,23 @@ def ensure_dirs():
 
 def _save_config(config: dict):
     """Write settings to config.json."""
-    ensure_dirs()
-    CONFIG_PATH.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=CONFIG_PATH.parent,
+            prefix=f".{CONFIG_PATH.name}.",
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_file.write(json.dumps(config, indent=2, sort_keys=True) + "\n")
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.replace(temp_path, CONFIG_PATH)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
 
 # --- Vocab ---
@@ -500,7 +437,7 @@ def _save_vocab(words):
 
 
 def _vocab_prompt():
-    """Build an initial_prompt tuned for coding-heavy dictation."""
+    """Build transcription context tuned for coding-heavy dictation."""
     words = _load_vocab()
     file_names = _prompt_file_names()
     if not words and not file_names:
@@ -517,7 +454,7 @@ def _vocab_prompt():
 
 
 def _file_basenames() -> list[str]:
-    """Get unique file basenames from git index for Whisper prompting."""
+    """Get unique file basenames from the git index for transcription context."""
     paths = _build_file_index()
     if not paths:
         return []
@@ -531,9 +468,14 @@ def _file_basenames() -> list[str]:
     return names
 
 
+def _is_safe_prompt_file_name(name: str) -> bool:
+    """Allow filename-shaped model hints without instruction-like punctuation or whitespace."""
+    return len(name) <= PROMPT_MAX_FILE_NAME_CHARS and re.fullmatch(r"[\w@+.-]+", name) is not None
+
+
 def _prompt_file_names() -> list[str]:
-    """Choose a capped, coding-relevant set of file names for Whisper prompting."""
-    names = _file_basenames()
+    """Choose a capped, coding-relevant set of file names for transcription context."""
+    names = [name for name in _file_basenames() if _is_safe_prompt_file_name(name)]
     if not names:
         return []
 
@@ -654,16 +596,11 @@ def _model_is_cached(repo_id: str) -> bool:
         return False
 
 
-def _create_transcription_model(repo_id: str, backend: ModelBackend) -> Any:
+def _create_transcription_model(repo_id: str) -> Any:
     """Load a transcription model without running inference."""
-    if backend == "qwen":
-        from mlx_audio.stt import load as load_stt_model
+    from mlx_audio.stt import load as load_stt_model
 
-        return load_stt_model(repo_id)
-
-    import mlx_whisper
-
-    return mlx_whisper
+    return load_stt_model(repo_id)
 
 
 def _qwen_system_prompt(prompt: str) -> str:
@@ -673,84 +610,44 @@ def _qwen_system_prompt(prompt: str) -> str:
 
 def _transcribe_with_model(
     model: Any,
-    backend: ModelBackend,
-    repo_id: str,
     audio_data: np.ndarray,
     prompt: str | None = None,
-) -> dict[str, Any]:
-    """Transcribe audio and normalize backend output."""
-    language = _get_model_language(backend)
-    if backend == "qwen":
-        kwargs: dict[str, Any] = {
-            "language": language,
-            "temperature": 0.0,
-        }
-        if prompt:
-            kwargs["system_prompt"] = _qwen_system_prompt(prompt)
-        result = model.generate(audio_data, **kwargs)
-        return {
-            "text": str(result.text),
-            "segments": list(result.segments or []),
-        }
-
-    kwargs = {
-        "path_or_hf_repo": repo_id,
-        "language": language,
-        "condition_on_previous_text": False,
+) -> str:
+    """Transcribe audio with Qwen."""
+    kwargs: dict[str, Any] = {
+        "language": _get_model_language(),
         "temperature": 0.0,
-        "without_timestamps": True,
     }
     if prompt:
-        kwargs["initial_prompt"] = prompt
-    result = model.transcribe(audio_data, **kwargs)
-    return {
-        "text": str(result.get("text", "")),
-        "segments": list(result.get("segments", []) or []),
-    }
+        kwargs["system_prompt"] = _qwen_system_prompt(prompt)
+    result = model.generate(audio_data, **kwargs)
+    return str(result.text)
 
 
-def _transcribe(audio_data: np.ndarray, prompt: str | None = None) -> dict[str, Any]:
+def _transcribe(audio_data: np.ndarray, prompt: str | None = None) -> str:
     """Transcribe with the active loaded model."""
-    if transcription_model is None or loaded_model_repo is None or loaded_model_backend is None:
+    if transcription_model is None:
         raise RuntimeError("transcription model is not loaded")
-    return _transcribe_with_model(
-        transcription_model,
-        loaded_model_backend,
-        loaded_model_repo,
-        audio_data,
-        prompt,
-    )
+    return _transcribe_with_model(transcription_model, audio_data, prompt)
 
 
-def _warm_transcription_model(model: Any, backend: ModelBackend, repo_id: str) -> None:
+def _warm_transcription_model(model: Any) -> None:
     """Run minimal inference to load model weights into memory."""
     dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
-    if backend == "qwen":
-        model.generate(
-            dummy,
-            language=_get_model_language(backend),
-            temperature=0.0,
-            max_tokens=1,
-        )
-        return
-
-    model.transcribe(
+    model.generate(
         dummy,
-        path_or_hf_repo=repo_id,
-        language=_get_model_language(backend),
-        condition_on_previous_text=False,
+        language=_get_model_language(),
         temperature=0.0,
-        without_timestamps=True,
+        max_tokens=1,
     )
 
 
 def load_model():
     """Lazy-load the active transcription model on first use."""
-    global loaded_model_backend, loaded_model_repo, transcription_model
+    global loaded_model_repo, transcription_model
     repo_id = _get_model_repo()
-    backend = _get_model_backend()
     with model_lock:
-        if transcription_model is None or loaded_model_repo != repo_id or loaded_model_backend != backend:
+        if transcription_model is None or loaded_model_repo != repo_id:
             cached = _model_is_cached(repo_id)
             if cached:
                 import huggingface_hub
@@ -758,17 +655,16 @@ def load_model():
                 huggingface_hub.utils.disable_progress_bars()
                 try:
                     with console.status("  Loading..."):
-                        model = _create_transcription_model(repo_id, backend)
-                        _warm_transcription_model(model, backend, repo_id)
+                        model = _create_transcription_model(repo_id)
+                        _warm_transcription_model(model)
                 finally:
                     huggingface_hub.utils.enable_progress_bars()
             else:
                 console.print(f"  [{C_ACCENT}]Downloading {_get_model_mode()} model (first run only)...[/{C_ACCENT}]")
-                model = _create_transcription_model(repo_id, backend)
-                _warm_transcription_model(model, backend, repo_id)
+                model = _create_transcription_model(repo_id)
+                _warm_transcription_model(model)
             transcription_model = model
             loaded_model_repo = repo_id
-            loaded_model_backend = backend
             _play_sound("ready")
             console.print(f"  [{C_OK}]Ready.[/{C_OK}]")
             _start_keepalive()
@@ -783,9 +679,9 @@ def _keepalive_loop():
     """Periodically run a dummy transcription to keep the model weights in memory."""
     global _keepalive_timer
     with model_lock:
-        if transcription_model is not None and loaded_model_backend is not None and loaded_model_repo is not None:
+        if transcription_model is not None:
             try:
-                _warm_transcription_model(transcription_model, loaded_model_backend, loaded_model_repo)
+                _warm_transcription_model(transcription_model)
             except Exception:
                 pass
     _keepalive_timer = threading.Timer(_KEEPALIVE_INTERVAL, _keepalive_loop)
@@ -954,30 +850,24 @@ def start_recording():
         rec_status.start()
 
 
-def _is_hallucination(segments):
-    """Detect Whisper hallucinations from segment-level signals."""
-    if not segments:
-        return False
-    # All segments are likely silence
-    if all(s.get("no_speech_prob", 0) > 0.6 for s in segments):
-        return True
-    # Low confidence + high compression = repetitive hallucination
-    for s in segments:
-        if s.get("avg_logprob", 0) < -1.0 and s.get("compression_ratio", 0) > 2.4:
-            return True
-    return False
-
-
 _PROMPT_ECHO_THRESHOLD = 0.8  # fraction of transcribed words found in prompt → likely echo
 
 
+def _is_repetitive_transcript(text: str) -> bool:
+    """Reject long, highly compressible decoder loops."""
+    text_bytes = text.encode("utf-8")
+    if len(text_bytes) < REPETITIVE_TEXT_MIN_BYTES:
+        return False
+    return len(text_bytes) / len(zlib.compress(text_bytes)) > REPETITIVE_TEXT_COMPRESSION_RATIO
+
+
 def _is_prompt_echo(text: str, prompt: str | None) -> bool:
-    """Check if transcription is just the initial_prompt (vocab/file words) echoed back."""
+    """Check if transcription is just the vocabulary and file context echoed back."""
     if not prompt:
         return False
 
     def _words(s: str) -> set[str]:
-        return set(s.lower().replace(",", " ").split())
+        return set(re.findall(r"\w+", s.lower()))
 
     prompt_words = _words(prompt)
     text_words = _words(text)
@@ -1013,7 +903,7 @@ def _build_file_index() -> list[str]:
 def _normalize_filename(name: str) -> str:
     """Strip leading/trailing underscores from filename stem for fuzzy matching.
 
-    Whisper often drops underscores, so __init__.py gets transcribed as init.py.
+    Speech recognition often drops underscores, so __init__.py becomes init.py.
     """
     stem, _, ext = name.rpartition(".")
     if not stem:
@@ -1022,7 +912,7 @@ def _normalize_filename(name: str) -> str:
 
 
 def _filename_variants(name: str) -> list[str]:
-    """Generate plausible filename spellings Whisper may emit for spoken file names."""
+    """Generate plausible filename spellings from spoken file names."""
     variants = []
     seen = set()
 
@@ -1149,14 +1039,12 @@ def stop_recording():
             load_model()
             prompt = _vocab_prompt()
             with model_lock:
-                result = _transcribe(audio_data, prompt)
+                text = _transcribe(audio_data, prompt).strip()
 
         transcription_ms = round((time.monotonic() - transcription_started_at) * 1000)
 
-        text = result["text"].strip()
-        segments = result.get("segments", [])
-
-        if not text or _is_hallucination(segments) or _is_prompt_echo(text, prompt):
+        system_prompt = _qwen_system_prompt(prompt) if prompt else None
+        if not text or _is_repetitive_transcript(text) or _is_prompt_echo(text, system_prompt):
             return
 
         text = _resolve_file_refs(text)
@@ -1437,7 +1325,7 @@ def cmd_mode():
 
     if len(sys.argv) >= 3:
         console.print(f"  [red]unknown mode:[/red] {sys.argv[2]}")
-        console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate|qwen[/{C_DIM}]")
+        console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate[/{C_DIM}]")
         sys.exit(1)
 
     mode = _get_model_mode()
@@ -1445,7 +1333,7 @@ def cmd_mode():
     label = MODEL_MODES[mode]["label"]
     console.print(f"  Mode: [{C_ACCENT}]{mode}[/{C_ACCENT}]")
     console.print(f"  [{C_DIM}]{repo.split('/')[-1]} • {label}[/{C_DIM}]")
-    console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate|qwen[/{C_DIM}]")
+    console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate[/{C_DIM}]")
 
 
 def _set_mode(mode: str):
@@ -1465,15 +1353,11 @@ def _apply_mode_flag() -> bool:
         _set_mode("accurate")
         console.print(f"  [{C_OK}]✓[/{C_OK}] Mode: accurate")
         return True
-    if "--qwen" in sys.argv:
-        _set_mode("qwen")
-        console.print(f"  [{C_OK}]✓[/{C_OK}] Mode: qwen")
-        return True
     if "--mode" in sys.argv:
         idx = sys.argv.index("--mode")
         if idx + 1 >= len(sys.argv) or sys.argv[idx + 1] not in MODEL_MODES:
             console.print("  [red]invalid --mode[/red]")
-            console.print(f"  [{C_DIM}]Usage: blurt --mode fast|accurate|qwen[/{C_DIM}]")
+            console.print(f"  [{C_DIM}]Usage: blurt --mode fast|accurate[/{C_DIM}]")
             sys.exit(1)
         mode = sys.argv[idx + 1]
         _set_mode(mode)
@@ -1639,9 +1523,9 @@ def show_help():
     console.print("    blurt add <word/phrase>     add word to vocab for better recognition")
     console.print("    blurt rm <word/phrase>      remove word from vocab")
     console.print("    blurt vocab                 list vocab words")
-    console.print("    blurt mode [fast|accurate|qwen]  choose transcription model")
-    console.print("    blurt --fast|--accurate|--qwen   quick-set mode in config.json")
-    console.print("    blurt --mode fast|accurate|qwen  quick-set mode in config.json")
+    console.print("    blurt mode [fast|accurate]  choose transcription model")
+    console.print("    blurt --fast|--accurate     quick-set mode in config.json")
+    console.print("    blurt --mode fast|accurate  quick-set mode in config.json")
     console.print("    blurt pause [on|off]        toggle media pause during recording")
     console.print("    blurt log [-n N]            show recent transcriptions (default 20)")
     console.print("    blurt doctor                run health checks")
@@ -1709,8 +1593,9 @@ def main():
             console.print(f"  [{C_DIM}]Usage: blurt pause on|off[/{C_DIM}]")
         return
 
-    if len(sys.argv) >= 2 and not sys.argv[1].startswith("-"):
-        console.print(f"  [red]unknown command:[/red] {sys.argv[1]}")
+    if len(sys.argv) >= 2:
+        argument_type = "option" if sys.argv[1].startswith("-") else "command"
+        console.print(f"  [red]unknown {argument_type}:[/red] {sys.argv[1]}")
         show_help()
         sys.exit(1)
 
