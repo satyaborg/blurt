@@ -713,6 +713,7 @@ def test_load_config_missing_file(tmp_path, monkeypatch):
     monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
     monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
     config = blurt._load_config()
+    assert config["case"] == "original"
     assert config["model_mode"] == "fast"
     assert config["language"] == "en"
     assert config["pause_media"] is True
@@ -737,6 +738,7 @@ def test_load_config_legacy_toml_fallback(tmp_path, monkeypatch):
     assert config["language"] == "es"
     assert config["model_mode"] == "accurate"
     assert json.loads((tmp_path / "config.json").read_text()) == {
+        "case": "original",
         "language": "es",
         "model_mode": "accurate",
         "pause_media": True,
@@ -767,6 +769,24 @@ def test_get_language_invalid_falls_back(tmp_path, monkeypatch, capsys):
 def test_get_model_mode_default(tmp_path, monkeypatch):
     _set_config_paths(monkeypatch, tmp_path)
     assert blurt._get_model_mode() == "fast"
+
+
+def test_get_case_mode_default(tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    assert blurt._get_case_mode() == "original"
+
+
+def test_get_case_mode_configured(tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    (tmp_path / "config.json").write_text('{"case": "lowercase"}\n')
+    assert blurt._get_case_mode() == "lowercase"
+
+
+def test_get_case_mode_invalid_falls_back(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    (tmp_path / "config.json").write_text('{"case": "uppercase"}\n')
+    assert blurt._get_case_mode() == "original"
+    assert "Unknown case" in capsys.readouterr().out
 
 
 def test_get_model_mode_configured(tmp_path, monkeypatch):
@@ -1011,6 +1031,41 @@ def test_pause_status(tmp_path, monkeypatch, capsys):
         blurt.main()
     captured = capsys.readouterr()
     assert "on" in captured.out.lower()
+
+
+def test_case_lowercase(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", "case", "lowercase"]):
+        blurt.main()
+    assert blurt._load_config()["case"] == "lowercase"
+    assert "Case: lowercase" in capsys.readouterr().out
+
+
+def test_case_original(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    (tmp_path / "config.json").write_text('{"case": "lowercase"}\n')
+    with patch.object(sys, "argv", ["blurt", "case", "original"]):
+        blurt.main()
+    assert blurt._load_config()["case"] == "original"
+    assert "Case: original" in capsys.readouterr().out
+
+
+def test_case_status(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    (tmp_path / "config.json").write_text('{"case": "lowercase"}\n')
+    with patch.object(sys, "argv", ["blurt", "case"]):
+        blurt.main()
+    assert "Case:" in capsys.readouterr().out
+
+
+def test_case_invalid_exits(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    with patch.object(sys, "argv", ["blurt", "case", "uppercase"]):
+        with pytest.raises(SystemExit, match="1"):
+            blurt.main()
+    assert "original|lowercase" in capsys.readouterr().out
 
 
 def test_mode_fast(tmp_path, monkeypatch, capsys):
@@ -1384,10 +1439,11 @@ def test_stop_recording_reports_end_to_end_latency(monkeypatch, capsys):
     monkeypatch.setattr(
         blurt,
         "_transcribe",
-        lambda audio_data, prompt: "hello world",
+        lambda audio_data, prompt: "Hello WORLD",
     )
     monkeypatch.setattr(blurt, "_vocab_prompt", lambda: None)
     monkeypatch.setattr(blurt, "_resolve_file_refs", lambda text: text)
+    monkeypatch.setattr(blurt, "_get_case_mode", lambda: "lowercase")
     monkeypatch.setattr(blurt, "paste_transcription", fake_paste)
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
 

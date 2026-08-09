@@ -121,6 +121,8 @@ MODEL_MODES: dict[str, ModelModeConfig] = {
     },
 }
 DEFAULT_MODEL_MODE = "fast"
+CASE_MODES = ("original", "lowercase")
+DEFAULT_CASE_MODE = "original"
 SHORTCUT = {keyboard.Key.cmd_r}  # Right Cmd only. Alt: {keyboard.Key.cmd, keyboard.Key.shift}
 SAMPLE_RATE = 16000
 CHANNELS = 1
@@ -200,6 +202,7 @@ SUPPORTED_LANGUAGES = {
 # --- Config ---
 def _default_config() -> dict:
     return {
+        "case": DEFAULT_CASE_MODE,
         "language": "en",
         "model_mode": DEFAULT_MODEL_MODE,
         "pause_media": True,
@@ -288,6 +291,15 @@ def _get_model_mode() -> str:
 def _get_model_repo() -> str:
     """Return the Hugging Face repo for the active model mode."""
     return MODEL_MODES[_get_model_mode()]["repo"]
+
+
+def _get_case_mode() -> str:
+    """Get configured transcript casing."""
+    case_mode = _load_config().get("case", DEFAULT_CASE_MODE)
+    if case_mode not in CASE_MODES:
+        console.print(f"  [yellow]Unknown case '{case_mode}' in config, using '{DEFAULT_CASE_MODE}'[/yellow]")
+        return DEFAULT_CASE_MODE
+    return case_mode
 
 
 def _get_model_language() -> str:
@@ -1048,6 +1060,8 @@ def stop_recording():
             return
 
         text = _resolve_file_refs(text)
+        if _get_case_mode() == "lowercase":
+            text = text.lower()
 
         global total_words
         word_count = len(text.split())
@@ -1336,6 +1350,26 @@ def cmd_mode():
     console.print(f"  [{C_DIM}]Usage: blurt mode fast|accurate[/{C_DIM}]")
 
 
+def cmd_case():
+    """Show or set transcript casing."""
+    if len(sys.argv) >= 3 and sys.argv[2] in CASE_MODES:
+        case_mode = sys.argv[2]
+        config = _load_config()
+        config["case"] = case_mode
+        _save_config(config)
+        console.print(f"  [{C_OK}]✓[/{C_OK}] Case: {case_mode}")
+        return
+
+    if len(sys.argv) >= 3:
+        console.print(f"  [red]unknown case:[/red] {sys.argv[2]}")
+        console.print(f"  [{C_DIM}]Usage: blurt case original|lowercase[/{C_DIM}]")
+        sys.exit(1)
+
+    case_mode = _get_case_mode()
+    console.print(f"  Case: [{C_ACCENT}]{case_mode}[/{C_ACCENT}]")
+    console.print(f"  [{C_DIM}]Usage: blurt case original|lowercase[/{C_DIM}]")
+
+
 def _set_mode(mode: str):
     """Persist the selected model mode."""
     config = _load_config()
@@ -1524,6 +1558,7 @@ def show_help():
     console.print("    blurt rm <word/phrase>      remove word from vocab")
     console.print("    blurt vocab                 list vocab words")
     console.print("    blurt mode [fast|accurate]  choose transcription model")
+    console.print("    blurt case [original|lowercase]  choose transcript casing")
     console.print("    blurt --fast|--accurate     quick-set mode in config.json")
     console.print("    blurt --mode fast|accurate  quick-set mode in config.json")
     console.print("    blurt pause [on|off]        toggle media pause during recording")
@@ -1562,6 +1597,10 @@ def main():
 
     if len(sys.argv) >= 2 and sys.argv[1] == "mode":
         cmd_mode()
+        return
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "case":
+        cmd_case()
         return
 
     if len(sys.argv) >= 3 and sys.argv[1] == "add":
@@ -1635,6 +1674,7 @@ def main():
     repo_id = _get_model_repo()
     info.add_row("mode", f"{mode} ({MODEL_MODES[mode]['label']})")
     info.add_row("model", repo_id.split("/")[-1])
+    info.add_row("case", _get_case_mode())
     lang = _get_language()
     lang_name = SUPPORTED_LANGUAGES.get(lang, lang)
     info.add_row("language", f"{lang_name} ({lang})")
