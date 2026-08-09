@@ -1,11 +1,17 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.9.1](https://github.com/satyaborg/blurt/releases/tag/v0.9.1) — 2026-08-09
+
+### Other
+
+- feat: add lowercase transcript mode (#23) ([c3d18ac](https://github.com/satyaborg/blurt/commit/c3d18ac1a400e240881f92ed41717cff4f1ad933))
 ## [0.9.0](https://github.com/satyaborg/blurt/releases/tag/v0.9.0) — 2026-07-31
 
 ### Other
 
 - feat(models)!: replace Whisper with Qwen3-ASR (#22) ([dd0da71](https://github.com/satyaborg/blurt/commit/dd0da71ef850646750399a7e4bdb023640513547))
+- changelog v0.9.0 ([681bbde](https://github.com/satyaborg/blurt/commit/681bbdec9cf2d57d36eb849937ca5b71716b88b1))
 ## [0.8.11](https://github.com/satyaborg/blurt/releases/tag/v0.8.11) — 2026-07-31
 
 ### Bug fixes
