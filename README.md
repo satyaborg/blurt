@@ -57,6 +57,13 @@ blurt mode accurate   # use the higher-accuracy 1.7B model
 
 The fast mode downloads an approximately 1 GB [MLX checkpoint](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit), while accurate mode downloads an approximately 2.5 GB [MLX checkpoint](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit). Custom words and filename-shaped repository terms are passed to Qwen as transcription context.
 
+## Transcript Casing
+
+```bash
+blurt case original     # preserve the model's casing
+blurt case lowercase    # convert every transcription to lowercase
+```
+
 ## Custom Words
 
 Teach Blurt words it gets wrong (names, jargon, acronyms):
