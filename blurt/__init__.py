@@ -13,6 +13,7 @@ License: MIT
 import ctypes
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -315,6 +316,7 @@ audio_buffer = []
 pressed_keys = set()
 stream = None
 lock = threading.Lock()
+audio_backend_lock = threading.Lock()
 model_lock = threading.Lock()
 transcription_model: Any | None = None
 loaded_model_repo: str | None = None
@@ -324,6 +326,9 @@ recording_session_id = 0
 _last_input_device: int | str | None = None  # track default input device for hot-swap detection
 _sound_cache: dict[str, tuple[np.ndarray, int]] = {}  # name -> (samples, sample_rate)
 _media_paused_session_id: int | None = None
+_audio_lifecycle_events: queue.SimpleQueue[str] = queue.SimpleQueue()
+_core_audio_listener: Any | None = None
+_core_audio_addresses: list[Any] = []
 
 
 def show_log(n=20):
@@ -717,7 +722,8 @@ def _play_sound(name):
     if entry is not None:
         samples, sr = entry
         try:
-            sd.play(samples, samplerate=sr, device=sd.default.device[1])
+            with audio_backend_lock:
+                sd.play(samples, samplerate=sr, device=sd.default.device[1])
         except Exception:
             pass
         return
@@ -786,25 +792,162 @@ def _resume_media(session_id: int):
     _media_paused_session_id = None
 
 
-def audio_callback(indata, frames, time_info, status):
-    if status:
-        console.print(f"Audio: {status}", style="yellow")
-    audio_buffer.append(indata.copy())
-
-
-def _refresh_audio_device():
+def _refresh_audio_device() -> bool:
     """Re-query sounddevice for the current default input device (handles hot-swap)."""
     global _last_input_device
     try:
-        sd._terminate()
-        sd._initialize()
-        current = sd.default.device[0]
+        with audio_backend_lock:
+            sd._terminate()
+            sd._initialize()
+            current = sd.default.device[0]
         if _last_input_device is not None and current != _last_input_device:
             dev_info = sd.query_devices(current)
             console.print(f"  [{C_DIM}]Audio input switched to: {dev_info['name']}[/{C_DIM}]")
         _last_input_device = current
+        return True
+    except Exception:
+        return False
+
+
+def _close_audio_stream(audio_stream: Any, *, abort: bool) -> None:
+    if audio_stream is None:
+        return
+    with audio_backend_lock:
+        try:
+            if abort and hasattr(audio_stream, "abort"):
+                audio_stream.abort()
+            else:
+                audio_stream.stop()
+        except Exception:
+            pass
+        try:
+            audio_stream.close()
+        except Exception:
+            pass
+
+
+def _recover_audio_session(reason: str, *, refresh: bool) -> None:
+    global audio_buffer, rec_status, recording, recording_session_id, record_requested, start_pending, stream
+    with lock:
+        was_active = recording or start_pending
+        session_id = recording_session_id
+        current_stream = stream
+        current_status = rec_status
+        recording = False
+        record_requested = False
+        start_pending = False
+        stream = None
+        rec_status = None
+        audio_buffer = []
+        if was_active:
+            recording_session_id += 1
+    pressed_keys.clear()
+    if current_status is not None:
+        try:
+            current_status.stop()
+        except Exception:
+            pass
+    _close_audio_stream(current_stream, abort=True)
+    _resume_media(session_id)
+    if refresh:
+        for delay in (0.0, 0.25, 1.0):
+            if delay:
+                time.sleep(delay)
+            if _refresh_audio_device():
+                break
+    if was_active:
+        console.print(f"  [{C_REC}]Recording cancelled: {reason}[/{C_REC}]")
+
+
+class _AudioObjectPropertyAddress(ctypes.Structure):
+    _fields_ = [
+        ("selector", ctypes.c_uint32),
+        ("scope", ctypes.c_uint32),
+        ("element", ctypes.c_uint32),
+    ]
+
+
+def _fourcc(value: str) -> int:
+    return int.from_bytes(value.encode("ascii"), "big")
+
+
+def _register_core_audio_listeners() -> None:
+    global _core_audio_addresses, _core_audio_listener
+    core_audio = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/CoreAudio.framework/CoreAudio")
+    listener_type = ctypes.CFUNCTYPE(
+        ctypes.c_int32,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.POINTER(_AudioObjectPropertyAddress),
+        ctypes.c_void_p,
+    )
+
+    def on_audio_property_changed(
+        object_id: int,
+        address_count: int,
+        addresses: ctypes.POINTER(_AudioObjectPropertyAddress),
+        client_data: ctypes.c_void_p,
+    ) -> int:
+        _audio_lifecycle_events.put("audio device changed")
+        return 0
+
+    _core_audio_listener = listener_type(on_audio_property_changed)
+    core_audio.AudioObjectAddPropertyListener.argtypes = [
+        ctypes.c_uint32,
+        ctypes.POINTER(_AudioObjectPropertyAddress),
+        listener_type,
+        ctypes.c_void_p,
+    ]
+    core_audio.AudioObjectAddPropertyListener.restype = ctypes.c_int32
+    _core_audio_addresses = [
+        _AudioObjectPropertyAddress(_fourcc("dIn "), _fourcc("glob"), 0),
+    ]
+    for address in _core_audio_addresses:
+        status = core_audio.AudioObjectAddPropertyListener(1, ctypes.byref(address), _core_audio_listener, None)
+        if status != 0:
+            raise OSError(status, "Could not observe Core Audio device changes")
+
+
+def _workspace_notification_loop() -> None:
+    from AppKit import NSWorkspace, NSWorkspaceDidWakeNotification, NSWorkspaceWillSleepNotification
+    from Foundation import NSDate, NSDefaultRunLoopMode, NSObject, NSRunLoop
+
+    class WorkspaceObserver(NSObject):
+        def workspaceWillSleep_(self, notification: Any) -> None:
+            _audio_lifecycle_events.put("system sleep")
+
+        def workspaceDidWake_(self, notification: Any) -> None:
+            _audio_lifecycle_events.put("system wake")
+
+    observer = WorkspaceObserver.alloc().init()
+    center = NSWorkspace.sharedWorkspace().notificationCenter()
+    center.addObserver_selector_name_object_(observer, "workspaceWillSleep:", NSWorkspaceWillSleepNotification, None)
+    center.addObserver_selector_name_object_(observer, "workspaceDidWake:", NSWorkspaceDidWakeNotification, None)
+    run_loop = NSRunLoop.currentRunLoop()
+    while True:
+        run_loop.runMode_beforeDate_(NSDefaultRunLoopMode, NSDate.dateWithTimeIntervalSinceNow_(1.0))
+
+
+def _audio_recovery_loop() -> None:
+    last_refresh: float | None = None
+    while True:
+        reason = _audio_lifecycle_events.get()
+        refresh = reason != "system sleep"
+        now = time.monotonic()
+        if refresh and last_refresh is not None and now - last_refresh < 0.5:
+            continue
+        _recover_audio_session(reason, refresh=refresh)
+        if refresh:
+            last_refresh = now
+
+
+def _start_audio_lifecycle_monitor() -> None:
+    try:
+        _register_core_audio_listeners()
     except Exception:
         pass
+    threading.Thread(target=_workspace_notification_loop, daemon=True).start()
+    threading.Thread(target=_audio_recovery_loop, daemon=True).start()
 
 
 def start_recording():
@@ -813,53 +956,68 @@ def start_recording():
         if recording or not record_requested:
             start_pending = False
             return
-        audio_buffer = []
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                stream = sd.InputStream(
+        session_buffer = []
+        audio_buffer = session_buffer
+
+    def session_audio_callback(indata, frames, time_info, status):
+        if status:
+            console.print(f"Audio: {status}", style="yellow")
+        session_buffer.append(indata.copy())
+
+    new_stream = None
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with audio_backend_lock:
+                new_stream = sd.InputStream(
                     samplerate=SAMPLE_RATE,
                     channels=CHANNELS,
                     dtype="float32",
                     latency="low",
-                    callback=audio_callback,
+                    callback=session_audio_callback,
                 )
-                stream.start()
-                break
-            except sd.PortAudioError:
-                stream = None
-                if attempt == 0:
-                    # Device may have changed — refresh PortAudio and retry
-                    lock.release()
-                    _refresh_audio_device()
-                    lock.acquire()
-                elif attempt < max_retries - 1:
-                    console.print(f"  [{C_REC}]Reconnecting audio... ({attempt + 1}/{max_retries})[/{C_REC}]")
-                    lock.release()
-                    time.sleep(1)
-                    lock.acquire()
-                else:
+                new_stream.start()
+            break
+        except sd.PortAudioError:
+            _close_audio_stream(new_stream, abort=True)
+            new_stream = None
+            if attempt == 0:
+                _refresh_audio_device()
+            elif attempt < max_retries - 1:
+                console.print(f"  [{C_REC}]Reconnecting audio... ({attempt + 1}/{max_retries})[/{C_REC}]")
+                time.sleep(1)
+            else:
+                with lock:
                     start_pending = False
                     record_requested = False
-                    console.print(f"  [{C_REC}]Audio device unavailable[/{C_REC}]")
-                    console.print(f"  [{C_DIM}]try: sudo killall coreaudiod — or replug/switch input[/{C_DIM}]")
-                    return
+                console.print(f"  [{C_REC}]Audio device unavailable[/{C_REC}]")
+                console.print(f"  [{C_DIM}]replug or select an input, then try again[/{C_DIM}]")
+                return
+
+    with lock:
         if not record_requested:
             start_pending = False
-            if stream:
-                stream.stop()
-                stream.close()
-                stream = None
-            return
-        recording = True
-        start_pending = False
-        recording_session_id += 1
-        session_id = recording_session_id
-        _play_sound("on")
-        # Pause media after stream is running — audio captures immediately, no start delay
-        _pause_media(session_id)
-        rec_status = console.status(f"  [{C_REC}]Listening...[/{C_REC}]")
-        rec_status.start()
+            cancelled = True
+        else:
+            cancelled = False
+            stream = new_stream
+            recording = True
+            start_pending = False
+            recording_session_id += 1
+            session_id = recording_session_id
+    if cancelled:
+        _close_audio_stream(new_stream, abort=True)
+        return
+
+    _play_sound("on")
+    _pause_media(session_id)
+    status = console.status(f"  [{C_REC}]Listening...[/{C_REC}]")
+    status.start()
+    with lock:
+        if recording and recording_session_id == session_id:
+            rec_status = status
+        else:
+            status.stop()
 
 
 _PROMPT_ECHO_THRESHOLD = 0.8  # fraction of transcribed words found in prompt → likely echo
@@ -1006,7 +1164,7 @@ def _persist_blurt(wav_path: Path, audio_data: np.ndarray, entry: dict):
 
 
 def stop_recording():
-    global recording, record_requested, stream, rec_status
+    global audio_buffer, recording, record_requested, stream, rec_status
     stop_started_at = time.monotonic()
     with lock:
         if not recording:
@@ -1014,19 +1172,25 @@ def stop_recording():
         recording = False
         record_requested = False
         session_id = recording_session_id
-        if rec_status:
-            rec_status.stop()
-            rec_status = None
-        if stream:
-            stream.stop()
-            stream.close()
-            stream = None
+        current_status = rec_status
+        rec_status = None
+        current_stream = stream
+        stream = None
+        recorded_chunks = audio_buffer
+        audio_buffer = []
+
+    if current_status:
+        try:
+            current_status.stop()
+        except Exception:
+            pass
+    _close_audio_stream(current_stream, abort=False)
 
     try:
-        if not audio_buffer:
+        if not recorded_chunks:
             return
 
-        audio_data = np.concatenate(audio_buffer, axis=0).flatten()
+        audio_data = np.concatenate(recorded_chunks, axis=0).flatten()
 
         # Trim silence from start/end for faster transcription
         audio_data = _vad_trim(audio_data, SAMPLE_RATE)
@@ -1712,6 +1876,9 @@ def main():
 
     # Check for updates in background
     threading.Thread(target=_check_update_bg, daemon=True).start()
+
+    # Recover automatically when macOS sleeps or the default microphone changes
+    _start_audio_lifecycle_monitor()
 
     # Pre-load model in background
     threading.Thread(target=load_model, daemon=True).start()

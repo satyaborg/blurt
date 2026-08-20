@@ -1331,6 +1331,169 @@ def test_doctor_subcommand(monkeypatch, capsys):
 # --- Recording + media integration ---
 
 
+def test_recover_audio_session_cancels_active_recording(monkeypatch, capsys):
+    events = []
+
+    class FakeStream:
+        def abort(self):
+            events.append("abort")
+
+        def close(self):
+            events.append("close")
+
+    class FakeStatus:
+        def stop(self):
+            events.append("status")
+
+    monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "record_requested", True)
+    monkeypatch.setattr(blurt, "start_pending", False)
+    monkeypatch.setattr(blurt, "stream", FakeStream())
+    monkeypatch.setattr(blurt, "rec_status", FakeStatus())
+    monkeypatch.setattr(blurt, "audio_buffer", [np.ones((4, 1))])
+    monkeypatch.setattr(blurt, "recording_session_id", 7)
+    monkeypatch.setattr(blurt, "pressed_keys", {blurt.keyboard.Key.cmd_r})
+    monkeypatch.setattr(blurt, "_resume_media", lambda session_id: events.append(("resume", session_id)))
+    monkeypatch.setattr(blurt, "_refresh_audio_device", lambda: events.append("refresh") or True)
+
+    blurt._recover_audio_session("system wake", refresh=True)
+
+    assert events == ["status", "abort", "close", ("resume", 7), "refresh"]
+    assert blurt.recording is False
+    assert blurt.record_requested is False
+    assert blurt.start_pending is False
+    assert blurt.stream is None
+    assert blurt.rec_status is None
+    assert blurt.audio_buffer == []
+    assert blurt.recording_session_id == 8
+    assert blurt.pressed_keys == set()
+    assert "Recording cancelled: system wake" in capsys.readouterr().out
+
+
+def test_recover_audio_session_tolerates_dead_stream(monkeypatch):
+    events = []
+
+    class DeadStream:
+        def abort(self):
+            events.append("abort")
+            raise RuntimeError("device gone")
+
+        def close(self):
+            events.append("close")
+            raise RuntimeError("device gone")
+
+    monkeypatch.setattr(blurt, "recording", True)
+    monkeypatch.setattr(blurt, "record_requested", True)
+    monkeypatch.setattr(blurt, "start_pending", False)
+    monkeypatch.setattr(blurt, "stream", DeadStream())
+    monkeypatch.setattr(blurt, "rec_status", None)
+    monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "recording_session_id", 2)
+    monkeypatch.setattr(blurt, "_resume_media", lambda session_id: events.append(("resume", session_id)))
+
+    blurt._recover_audio_session("audio device changed", refresh=False)
+
+    assert events == ["abort", "close", ("resume", 2)]
+    assert blurt.recording is False
+    assert blurt.stream is None
+
+
+def test_recover_audio_session_retries_refresh_after_wake(monkeypatch):
+    attempts = iter([False, False, True])
+    sleeps = []
+
+    monkeypatch.setattr(blurt, "recording", False)
+    monkeypatch.setattr(blurt, "record_requested", False)
+    monkeypatch.setattr(blurt, "start_pending", False)
+    monkeypatch.setattr(blurt, "stream", None)
+    monkeypatch.setattr(blurt, "rec_status", None)
+    monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "_resume_media", lambda session_id: None)
+    monkeypatch.setattr(blurt, "_refresh_audio_device", lambda: next(attempts))
+    monkeypatch.setattr(blurt.time, "sleep", sleeps.append)
+
+    blurt._recover_audio_session("system wake", refresh=True)
+
+    assert sleeps == [0.25, 1.0]
+
+
+def test_register_core_audio_listener_queues_device_change(monkeypatch):
+    calls = []
+
+    class FakeFunction:
+        argtypes = None
+        restype = None
+
+        def __call__(self, object_id, address, listener, client_data):
+            value = blurt.ctypes.cast(address, blurt.ctypes.POINTER(blurt._AudioObjectPropertyAddress)).contents
+            calls.append((object_id, value.selector, value.scope, value.element))
+            return 0
+
+    fake_function = FakeFunction()
+    fake_library = SimpleNamespace(AudioObjectAddPropertyListener=fake_function)
+    monkeypatch.setattr(blurt.ctypes.cdll, "LoadLibrary", lambda path: fake_library)
+    monkeypatch.setattr(blurt, "_audio_lifecycle_events", __import__("queue").SimpleQueue())
+
+    blurt._register_core_audio_listeners()
+    blurt._core_audio_listener(1, 0, None, None)
+
+    assert calls == [(1, blurt._fourcc("dIn "), blurt._fourcc("glob"), 0)]
+    assert blurt._audio_lifecycle_events.get() == "audio device changed"
+
+
+def test_audio_recovery_loop_debounces_refresh_events(monkeypatch):
+    events = iter(["system wake", "audio device changed", "system sleep"])
+    recoveries = []
+
+    class Done(Exception):
+        pass
+
+    class FakeQueue:
+        def get(self):
+            try:
+                return next(events)
+            except StopIteration as error:
+                raise Done from error
+
+    times = iter([0.1, 0.2, 1.0])
+    monkeypatch.setattr(blurt, "_audio_lifecycle_events", FakeQueue())
+    monkeypatch.setattr(blurt.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(
+        blurt,
+        "_recover_audio_session",
+        lambda reason, refresh: recoveries.append((reason, refresh)),
+    )
+
+    with pytest.raises(Done):
+        blurt._audio_recovery_loop()
+
+    assert recoveries == [("system wake", True), ("system sleep", False)]
+
+
+def test_start_audio_lifecycle_monitor_starts_observers(monkeypatch):
+    events = []
+
+    class FakeThread:
+        def __init__(self, target, daemon):
+            events.append((target, daemon))
+
+        def start(self):
+            events.append("start")
+
+    monkeypatch.setattr(blurt, "_register_core_audio_listeners", lambda: events.append("register"))
+    monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
+
+    blurt._start_audio_lifecycle_monitor()
+
+    assert events == [
+        "register",
+        (blurt._workspace_notification_loop, True),
+        "start",
+        (blurt._audio_recovery_loop, True),
+        "start",
+    ]
+
+
 def test_start_recording_pauses_media(monkeypatch):
     """start_recording should call _pause_media."""
     events = []
@@ -1341,6 +1504,7 @@ def test_start_recording_pauses_media(monkeypatch):
     monkeypatch.setattr(blurt, "record_requested", True)
     monkeypatch.setattr(blurt, "start_pending", True)
     monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "stream", None)
     monkeypatch.setattr(blurt, "rec_status", None)
     monkeypatch.setattr(blurt, "recording_session_id", 0)
 
@@ -1365,6 +1529,45 @@ def test_start_recording_pauses_media(monkeypatch):
 
     # Cleanup
     monkeypatch.setattr(blurt, "recording", False)
+
+
+def test_start_recording_refreshes_device_after_open_failure(monkeypatch):
+    events = []
+
+    class FakeStream:
+        def start(self):
+            events.append("start")
+
+    streams = iter([blurt.sd.PortAudioError("device gone"), FakeStream()])
+
+    def fake_input_stream(**kwargs):
+        result = next(streams)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(blurt, "recording", False)
+    monkeypatch.setattr(blurt, "record_requested", True)
+    monkeypatch.setattr(blurt, "start_pending", True)
+    monkeypatch.setattr(blurt, "audio_buffer", [])
+    monkeypatch.setattr(blurt, "stream", None)
+    monkeypatch.setattr(blurt, "rec_status", None)
+    monkeypatch.setattr(blurt, "recording_session_id", 0)
+    monkeypatch.setattr(blurt.sd, "InputStream", fake_input_stream)
+    monkeypatch.setattr(blurt, "_refresh_audio_device", lambda: events.append("refresh") or True)
+    monkeypatch.setattr(blurt, "_play_sound", lambda name: None)
+    monkeypatch.setattr(blurt, "_pause_media", lambda session_id: None)
+    monkeypatch.setattr(
+        blurt,
+        "console",
+        type("C", (), {"status": lambda self, message: type("S", (), {"start": lambda self: None})()})(),
+    )
+
+    blurt.start_recording()
+
+    assert events == ["refresh", "start"]
+    assert blurt.recording is True
+    assert blurt.start_pending is False
 
 
 def test_stop_recording_resumes_media(monkeypatch):

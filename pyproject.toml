@@ -23,6 +23,7 @@ dependencies = [
     "mlx-audio>=0.4.0",
     "sounddevice",
     "pynput",
+    "pyobjc-framework-Cocoa; sys_platform == 'darwin'",
     "numpy",
     "rich",
 ]
