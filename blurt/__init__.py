@@ -31,6 +31,7 @@ from urllib.request import urlopen
 import numpy as np
 import sounddevice as sd
 from pynput import keyboard
+from Quartz import CGEventGetIntegerValueField, kCGEventKeyDown, kCGEventKeyUp, kCGKeyboardEventKeycode
 
 _mr_lib = None
 try:
@@ -123,7 +124,18 @@ MODEL_MODES: dict[str, ModelModeConfig] = {
 DEFAULT_MODEL_MODE = "fast"
 CASE_MODES = ("original", "lowercase")
 DEFAULT_CASE_MODE = "original"
-SHORTCUT = {keyboard.Key.cmd_r}  # Right Cmd only. Alt: {keyboard.Key.cmd, keyboard.Key.shift}
+DEFAULT_SHORTCUT = "tilde"
+TILDE_KEY_CODE = 50  # macOS hardware code for the physical backtick/tilde key
+TILDE_KEY = keyboard.KeyCode.from_vk(TILDE_KEY_CODE)
+SHORTCUTS = {
+    "tilde": frozenset({TILDE_KEY}),
+    "right-cmd": frozenset({keyboard.Key.cmd_r}),
+}
+SHORTCUT_LABELS = {
+    "tilde": "` (tilde)",
+    "right-cmd": "Right ⌘",
+}
+SHORTCUT = SHORTCUTS[DEFAULT_SHORTCUT]
 SAMPLE_RATE = 16000
 CHANNELS = 1
 MEDIA_RESUME_DELAY_S = 2.0
@@ -206,6 +218,7 @@ def _default_config() -> dict:
         "language": "en",
         "model_mode": DEFAULT_MODEL_MODE,
         "pause_media": True,
+        "shortcut": DEFAULT_SHORTCUT,
     }
 
 
@@ -300,6 +313,23 @@ def _get_case_mode() -> str:
         console.print(f"  [yellow]Unknown case '{case_mode}' in config, using '{DEFAULT_CASE_MODE}'[/yellow]")
         return DEFAULT_CASE_MODE
     return case_mode
+
+
+def _get_shortcut_name() -> str:
+    """Get the configured activation shortcut."""
+    shortcut = _load_config().get("shortcut", DEFAULT_SHORTCUT)
+    if not isinstance(shortcut, str) or shortcut not in SHORTCUTS:
+        console.print(f"  [yellow]Unknown shortcut '{shortcut}' in config, using '{DEFAULT_SHORTCUT}'[/yellow]")
+        return DEFAULT_SHORTCUT
+    return shortcut
+
+
+def _configure_shortcut() -> str:
+    """Apply the configured shortcut to the keyboard listener."""
+    global SHORTCUT
+    shortcut = _get_shortcut_name()
+    SHORTCUT = SHORTCUTS[shortcut]
+    return shortcut
 
 
 def _get_model_language() -> str:
@@ -1158,7 +1188,29 @@ _KEY_NORMALIZE = {
 
 
 def _normalize(key):
+    if isinstance(key, keyboard.KeyCode) and key.vk == TILDE_KEY_CODE:
+        return TILDE_KEY
     return _KEY_NORMALIZE.get(key, key)
+
+
+def _intercept_keyboard_event(event_type, event):
+    """Suppress the configured tilde shortcut before it reaches the focused app."""
+    is_tilde_event = (
+        event_type in (kCGEventKeyDown, kCGEventKeyUp)
+        and CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode) == TILDE_KEY_CODE
+    )
+    if SHORTCUT == SHORTCUTS["tilde"] and is_tilde_event:
+        return None
+    return event
+
+
+def _create_keyboard_listener():
+    """Create the global listener with selective macOS event interception."""
+    return keyboard.Listener(
+        on_press=on_press,
+        on_release=on_release,
+        darwin_intercept=_intercept_keyboard_event,
+    )
 
 
 def on_press(key):
@@ -1370,6 +1422,26 @@ def cmd_case():
     console.print(f"  [{C_DIM}]Usage: blurt case original|lowercase[/{C_DIM}]")
 
 
+def cmd_shortcut():
+    """Show or set the activation shortcut."""
+    if len(sys.argv) >= 3 and sys.argv[2] in SHORTCUTS:
+        shortcut = sys.argv[2]
+        config = _load_config()
+        config["shortcut"] = shortcut
+        _save_config(config)
+        console.print(f"  [{C_OK}]✓[/{C_OK}] Shortcut: {shortcut}")
+        return
+
+    if len(sys.argv) >= 3:
+        console.print(f"  [red]unknown shortcut:[/red] {sys.argv[2]}")
+        console.print(f"  [{C_DIM}]Usage: blurt shortcut tilde|right-cmd[/{C_DIM}]")
+        sys.exit(1)
+
+    shortcut = _get_shortcut_name()
+    console.print(f"  Shortcut: [{C_ACCENT}]{shortcut}[/{C_ACCENT}] ({SHORTCUT_LABELS[shortcut]})")
+    console.print(f"  [{C_DIM}]Usage: blurt shortcut tilde|right-cmd[/{C_DIM}]")
+
+
 def _set_mode(mode: str):
     """Persist the selected model mode."""
     config = _load_config()
@@ -1559,6 +1631,7 @@ def show_help():
     console.print("    blurt vocab                 list vocab words")
     console.print("    blurt mode [fast|accurate]  choose transcription model")
     console.print("    blurt case [original|lowercase]  choose transcript casing")
+    console.print("    blurt shortcut \\[tilde|right-cmd]  choose shortcut (default: tilde)")
     console.print("    blurt --fast|--accurate     quick-set mode in config.json")
     console.print("    blurt --mode fast|accurate  quick-set mode in config.json")
     console.print("    blurt pause [on|off]        toggle media pause during recording")
@@ -1603,6 +1676,10 @@ def main():
         cmd_case()
         return
 
+    if len(sys.argv) >= 2 and sys.argv[1] == "shortcut":
+        cmd_shortcut()
+        return
+
     if len(sys.argv) >= 3 and sys.argv[1] == "add":
         add_vocab(" ".join(sys.argv[2:]))
         return
@@ -1645,24 +1722,11 @@ def main():
     global total_words
     ensure_dirs()
 
+    shortcut_name = _configure_shortcut()
     hist_words, hist_wpm, hist_count = load_stats()
     total_words = hist_words
 
-    _KEY_NAMES = {
-        "cmd": "\u2318",
-        "cmd_l": "Left \u2318",
-        "cmd_r": "Right \u2318",
-        "ctrl": "\u2303",
-        "ctrl_l": "Left \u2303",
-        "ctrl_r": "Right \u2303",
-        "alt": "\u2325",
-        "alt_l": "Left \u2325",
-        "alt_r": "Right \u2325",
-        "shift": "\u21e7",
-        "shift_l": "Left \u21e7",
-        "shift_r": "Right \u21e7",
-    }
-    shortcut_str = "+".join(_KEY_NAMES.get(k.name, k.name) if hasattr(k, "name") else str(k) for k in SHORTCUT)
+    shortcut_str = SHORTCUT_LABELS[shortcut_name]
     logo_art = "░█▀▄░█░░░█░█░█▀▄░▀█▀\n░█▀▄░█░░░█░█░█▀▄░░█░\n░▀▀░░▀▀▀░▀▀▀░▀░▀░░▀░"
     logo = f"[{C_ACCENT}]{logo_art}[/{C_ACCENT}]\n[{C_DIM}]v{__version__}[/{C_DIM}]"
 
@@ -1717,7 +1781,7 @@ def main():
     threading.Thread(target=load_model, daemon=True).start()
 
     try:
-        with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+        with _create_keyboard_listener() as listener:
             listener.join()
     except KeyboardInterrupt:
         console.print(f"\n  [{C_DIM}]bye[/{C_DIM}]")

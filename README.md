@@ -16,7 +16,7 @@
   <img src="https://raw.githubusercontent.com/satyaborg/blurt/main/demo.gif" alt="demo" width="600">
 </p>
 
-On-device voice-to-text for macOS. Press right **⌘**, speak, then press it again - your words go straight into Claude Code, Codex, Cursor, OpenCode or any other agent, wherever your cursor is.
+On-device voice-to-text for macOS. Press the **` / ~ key**, speak, then press it again - your words go straight into Claude Code, Codex, Cursor, OpenCode or any other agent, wherever your cursor is.
 
 ## Install
 
@@ -39,9 +39,17 @@ First run downloads the selected transcription model once. macOS will prompt for
 
 | Action | Description |
 |---|---|
-| Press right **⌘** | Start recording |
-| Press right **⌘** again | Stop, transcribe, paste at cursor |
+| Press the **` / ~ key** | Start recording |
+| Press the **` / ~ key** again | Stop, transcribe, paste at cursor |
 | **Ctrl + C** | Quit |
+
+Change the activation shortcut and restart Blurt:
+
+```bash
+blurt shortcut tilde       # use the default ` / ~ key
+blurt shortcut right-cmd   # use the right Command key
+blurt shortcut             # show the configured shortcut
+```
 
 ## Models
 
