@@ -162,6 +162,7 @@ def test_help_takes_priority_over_mode_flag(tmp_path, monkeypatch, capsys):
         blurt.main()
     captured = capsys.readouterr()
     assert "Usage:" in captured.out
+    assert "shortcut [tilde|right-cmd]" in captured.out
     assert not (tmp_path / "config.json").exists()
 
 
@@ -717,6 +718,7 @@ def test_load_config_missing_file(tmp_path, monkeypatch):
     assert config["model_mode"] == "fast"
     assert config["language"] == "en"
     assert config["pause_media"] is True
+    assert config["shortcut"] == "tilde"
     assert (tmp_path / "config.json").exists()
 
 
@@ -742,6 +744,7 @@ def test_load_config_legacy_toml_fallback(tmp_path, monkeypatch):
         "language": "es",
         "model_mode": "accurate",
         "pause_media": True,
+        "shortcut": "tilde",
     }
 
 
@@ -787,6 +790,35 @@ def test_get_case_mode_invalid_falls_back(tmp_path, monkeypatch, capsys):
     (tmp_path / "config.json").write_text('{"case": "uppercase"}\n')
     assert blurt._get_case_mode() == "original"
     assert "Unknown case" in capsys.readouterr().out
+
+
+def test_get_shortcut_name_default(tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    (tmp_path / "config.json").write_text('{"language": "en"}\n')
+    assert blurt._get_shortcut_name() == "tilde"
+
+
+def test_get_shortcut_name_configured(tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    (tmp_path / "config.json").write_text('{"shortcut": "right-cmd"}\n')
+    assert blurt._get_shortcut_name() == "right-cmd"
+
+
+def test_get_shortcut_name_invalid_falls_back(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    (tmp_path / "config.json").write_text('{"shortcut": "space"}\n')
+    assert blurt._get_shortcut_name() == "tilde"
+    assert "Unknown shortcut" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("shortcut", ["tilde", "right-cmd"])
+def test_configure_shortcut(shortcut, tmp_path, monkeypatch):
+    _set_config_paths(monkeypatch, tmp_path)
+    (tmp_path / "config.json").write_text(json.dumps({"shortcut": shortcut}))
+    monkeypatch.setattr(blurt, "SHORTCUT", frozenset())
+
+    assert blurt._configure_shortcut() == shortcut
+    assert blurt.SHORTCUT == blurt.SHORTCUTS[shortcut]
 
 
 def test_get_model_mode_configured(tmp_path, monkeypatch):
@@ -1066,6 +1098,40 @@ def test_case_invalid_exits(tmp_path, monkeypatch, capsys):
         with pytest.raises(SystemExit, match="1"):
             blurt.main()
     assert "original|lowercase" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("shortcut", ["tilde", "right-cmd"])
+def test_shortcut_set(shortcut, tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(blurt, "BLURT_DIR", tmp_path)
+    monkeypatch.setattr(blurt, "AUDIO_DIR", tmp_path / "audio")
+    with patch.object(sys, "argv", ["blurt", "shortcut", shortcut]):
+        blurt.main()
+    assert blurt._load_config()["shortcut"] == shortcut
+    assert f"Shortcut: {shortcut}" in capsys.readouterr().out
+
+
+def test_shortcut_status(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    (tmp_path / "config.json").write_text('{"shortcut": "right-cmd"}\n')
+    with patch.object(sys, "argv", ["blurt", "shortcut"]):
+        blurt.main()
+    captured = capsys.readouterr().out
+    assert "Shortcut:" in captured
+    assert "right-cmd" in captured
+    assert "Right ⌘" in captured
+
+
+def test_shortcut_invalid_exits_without_changing_config(tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    config_path = tmp_path / "config.json"
+    original = '{"model_mode": "accurate", "shortcut": "right-cmd"}\n'
+    config_path.write_text(original)
+    with patch.object(sys, "argv", ["blurt", "shortcut", "space"]):
+        with pytest.raises(SystemExit, match="1"):
+            blurt.main()
+    assert config_path.read_text() == original
+    assert "tilde|right-cmd" in capsys.readouterr().out
 
 
 def test_mode_fast(tmp_path, monkeypatch, capsys):
@@ -1567,8 +1633,9 @@ def test_shortcut_release_keeps_pending_start(monkeypatch):
 
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
 
-    blurt.on_press(blurt.keyboard.Key.cmd_r)
-    blurt.on_release(blurt.keyboard.Key.cmd_r)
+    shortcut = blurt.keyboard.KeyCode.from_char("`")
+    blurt.on_press(shortcut)
+    blurt.on_release(shortcut)
 
     assert len(spawned) == 1
     assert spawned[0].target is blurt.start_recording
@@ -1595,9 +1662,10 @@ def test_second_shortcut_press_cancels_pending_start(monkeypatch):
 
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
 
-    blurt.on_press(blurt.keyboard.Key.cmd_r)
-    blurt.on_release(blurt.keyboard.Key.cmd_r)
-    blurt.on_press(blurt.keyboard.Key.cmd_r)
+    shortcut = blurt.keyboard.KeyCode.from_char("`")
+    blurt.on_press(shortcut)
+    blurt.on_release(shortcut)
+    blurt.on_press(shortcut)
 
     assert len(spawned) == 1
     assert blurt.record_requested is False
@@ -1621,7 +1689,7 @@ def test_second_shortcut_press_stops_recording(monkeypatch):
 
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
 
-    blurt.on_press(blurt.keyboard.Key.cmd_r)
+    blurt.on_press(blurt.keyboard.KeyCode.from_char("`"))
 
     assert len(spawned) == 1
     assert spawned[0].target is blurt.stop_recording
@@ -1630,7 +1698,8 @@ def test_second_shortcut_press_stops_recording(monkeypatch):
 
 def test_shortcut_key_repeat_does_not_toggle_recording(monkeypatch):
     spawned = []
-    monkeypatch.setattr(blurt, "pressed_keys", {blurt.keyboard.Key.cmd_r})
+    shortcut = blurt.keyboard.KeyCode.from_char("`")
+    monkeypatch.setattr(blurt, "pressed_keys", {shortcut})
     monkeypatch.setattr(blurt, "recording", True)
     monkeypatch.setattr(blurt, "record_requested", True)
     monkeypatch.setattr(blurt, "start_pending", False)
@@ -1644,7 +1713,7 @@ def test_shortcut_key_repeat_does_not_toggle_recording(monkeypatch):
 
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
 
-    blurt.on_press(blurt.keyboard.Key.cmd_r)
+    blurt.on_press(shortcut)
 
     assert spawned == []
     assert blurt.record_requested is True
