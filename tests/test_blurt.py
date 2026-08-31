@@ -163,6 +163,7 @@ def test_help_takes_priority_over_mode_flag(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "Usage:" in captured.out
     assert "shortcut [tilde|right-cmd]" in captured.out
+    assert "default: tilde" in captured.out
     assert not (tmp_path / "config.json").exists()
 
 
@@ -343,6 +344,13 @@ def test_normalize_passthrough():
     from pynput import keyboard
 
     assert blurt._normalize(keyboard.Key.space) == keyboard.Key.space
+
+
+def test_normalize_tilde_by_physical_key_code():
+    from pynput import keyboard
+
+    layout_specific_event = keyboard.KeyCode(vk=blurt.TILDE_KEY_CODE, char="§")
+    assert blurt._normalize(layout_specific_event) == blurt.TILDE_KEY
 
 
 # --- Vocab ---
@@ -807,6 +815,14 @@ def test_get_shortcut_name_configured(tmp_path, monkeypatch):
 def test_get_shortcut_name_invalid_falls_back(tmp_path, monkeypatch, capsys):
     _set_config_paths(monkeypatch, tmp_path)
     (tmp_path / "config.json").write_text('{"shortcut": "space"}\n')
+    assert blurt._get_shortcut_name() == "tilde"
+    assert "Unknown shortcut" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("shortcut", [[], {}])
+def test_get_shortcut_name_invalid_type_falls_back(shortcut, tmp_path, monkeypatch, capsys):
+    _set_config_paths(monkeypatch, tmp_path)
+    (tmp_path / "config.json").write_text(json.dumps({"shortcut": shortcut}))
     assert blurt._get_shortcut_name() == "tilde"
     assert "Unknown shortcut" in capsys.readouterr().out
 
@@ -1633,7 +1649,7 @@ def test_shortcut_release_keeps_pending_start(monkeypatch):
 
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
 
-    shortcut = blurt.keyboard.KeyCode.from_char("`")
+    shortcut = blurt.keyboard.KeyCode(vk=blurt.TILDE_KEY_CODE, char="§")
     blurt.on_press(shortcut)
     blurt.on_release(shortcut)
 
@@ -1662,7 +1678,7 @@ def test_second_shortcut_press_cancels_pending_start(monkeypatch):
 
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
 
-    shortcut = blurt.keyboard.KeyCode.from_char("`")
+    shortcut = blurt.keyboard.KeyCode(vk=blurt.TILDE_KEY_CODE, char="§")
     blurt.on_press(shortcut)
     blurt.on_release(shortcut)
     blurt.on_press(shortcut)
@@ -1689,7 +1705,7 @@ def test_second_shortcut_press_stops_recording(monkeypatch):
 
     monkeypatch.setattr(blurt.threading, "Thread", FakeThread)
 
-    blurt.on_press(blurt.keyboard.KeyCode.from_char("`"))
+    blurt.on_press(blurt.keyboard.KeyCode(vk=blurt.TILDE_KEY_CODE, char="§"))
 
     assert len(spawned) == 1
     assert spawned[0].target is blurt.stop_recording
@@ -1698,8 +1714,8 @@ def test_second_shortcut_press_stops_recording(monkeypatch):
 
 def test_shortcut_key_repeat_does_not_toggle_recording(monkeypatch):
     spawned = []
-    shortcut = blurt.keyboard.KeyCode.from_char("`")
-    monkeypatch.setattr(blurt, "pressed_keys", {shortcut})
+    shortcut = blurt.keyboard.KeyCode(vk=blurt.TILDE_KEY_CODE, char="§")
+    monkeypatch.setattr(blurt, "pressed_keys", {blurt.TILDE_KEY})
     monkeypatch.setattr(blurt, "recording", True)
     monkeypatch.setattr(blurt, "record_requested", True)
     monkeypatch.setattr(blurt, "start_pending", False)

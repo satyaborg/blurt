@@ -124,8 +124,10 @@ DEFAULT_MODEL_MODE = "fast"
 CASE_MODES = ("original", "lowercase")
 DEFAULT_CASE_MODE = "original"
 DEFAULT_SHORTCUT = "tilde"
+TILDE_KEY_CODE = 50  # macOS hardware code for the physical backtick/tilde key
+TILDE_KEY = keyboard.KeyCode.from_vk(TILDE_KEY_CODE)
 SHORTCUTS = {
-    "tilde": frozenset({keyboard.KeyCode.from_char("`")}),
+    "tilde": frozenset({TILDE_KEY}),
     "right-cmd": frozenset({keyboard.Key.cmd_r}),
 }
 SHORTCUT_LABELS = {
@@ -315,7 +317,7 @@ def _get_case_mode() -> str:
 def _get_shortcut_name() -> str:
     """Get the configured activation shortcut."""
     shortcut = _load_config().get("shortcut", DEFAULT_SHORTCUT)
-    if shortcut not in SHORTCUTS:
+    if not isinstance(shortcut, str) or shortcut not in SHORTCUTS:
         console.print(f"  [yellow]Unknown shortcut '{shortcut}' in config, using '{DEFAULT_SHORTCUT}'[/yellow]")
         return DEFAULT_SHORTCUT
     return shortcut
@@ -1185,6 +1187,8 @@ _KEY_NORMALIZE = {
 
 
 def _normalize(key):
+    if isinstance(key, keyboard.KeyCode) and key.vk == TILDE_KEY_CODE:
+        return TILDE_KEY
     return _KEY_NORMALIZE.get(key, key)
 
 
@@ -1606,7 +1610,7 @@ def show_help():
     console.print("    blurt vocab                 list vocab words")
     console.print("    blurt mode [fast|accurate]  choose transcription model")
     console.print("    blurt case [original|lowercase]  choose transcript casing")
-    console.print("    blurt shortcut \\[tilde|right-cmd]  choose activation shortcut")
+    console.print("    blurt shortcut \\[tilde|right-cmd]  choose shortcut (default: tilde)")
     console.print("    blurt --fast|--accurate     quick-set mode in config.json")
     console.print("    blurt --mode fast|accurate  quick-set mode in config.json")
     console.print("    blurt pause [on|off]        toggle media pause during recording")
