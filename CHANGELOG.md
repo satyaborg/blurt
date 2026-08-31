@@ -1,11 +1,22 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.0](https://github.com/satyaborg/blurt/releases/tag/v0.10.0) — 2026-08-31
+
+### Bug fixes
+
+- fix(shortcut): match physical tilde key ([71f8427](https://github.com/satyaborg/blurt/commit/71f842716e26e85160a30f5aaaad894e1a764a75))
+- fix(shortcut): suppress tilde activation events ([9703742](https://github.com/satyaborg/blurt/commit/97037423bc5bf2981f2a34ae4b4323bcb3485b38))
+
+### Other
+
+- feat(shortcut): add configurable activation key ([197cd11](https://github.com/satyaborg/blurt/commit/197cd1144f5997305b8aa15128c17701646988fd))
 ## [0.9.1](https://github.com/satyaborg/blurt/releases/tag/v0.9.1) — 2026-08-09
 
 ### Other
 
 - feat: add lowercase transcript mode (#23) ([c3d18ac](https://github.com/satyaborg/blurt/commit/c3d18ac1a400e240881f92ed41717cff4f1ad933))
+- changelog v0.9.1 ([eecb226](https://github.com/satyaborg/blurt/commit/eecb226cde4dac04e5149448bae6a8200bb90b0b))
 ## [0.9.0](https://github.com/satyaborg/blurt/releases/tag/v0.9.0) — 2026-07-31
 
 ### Other
