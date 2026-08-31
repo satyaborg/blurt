@@ -31,6 +31,7 @@ from urllib.request import urlopen
 import numpy as np
 import sounddevice as sd
 from pynput import keyboard
+from Quartz import CGEventGetIntegerValueField, kCGEventKeyDown, kCGEventKeyUp, kCGKeyboardEventKeycode
 
 _mr_lib = None
 try:
@@ -1192,6 +1193,26 @@ def _normalize(key):
     return _KEY_NORMALIZE.get(key, key)
 
 
+def _intercept_keyboard_event(event_type, event):
+    """Suppress the configured tilde shortcut before it reaches the focused app."""
+    is_tilde_event = (
+        event_type in (kCGEventKeyDown, kCGEventKeyUp)
+        and CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode) == TILDE_KEY_CODE
+    )
+    if SHORTCUT == SHORTCUTS["tilde"] and is_tilde_event:
+        return None
+    return event
+
+
+def _create_keyboard_listener():
+    """Create the global listener with selective macOS event interception."""
+    return keyboard.Listener(
+        on_press=on_press,
+        on_release=on_release,
+        darwin_intercept=_intercept_keyboard_event,
+    )
+
+
 def on_press(key):
     global record_requested, start_pending
     shortcut_was_pressed = SHORTCUT.issubset(pressed_keys)
@@ -1760,7 +1781,7 @@ def main():
     threading.Thread(target=load_model, daemon=True).start()
 
     try:
-        with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+        with _create_keyboard_listener() as listener:
             listener.join()
     except KeyboardInterrupt:
         console.print(f"\n  [{C_DIM}]bye[/{C_DIM}]")

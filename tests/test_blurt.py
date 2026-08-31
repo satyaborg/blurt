@@ -353,6 +353,49 @@ def test_normalize_tilde_by_physical_key_code():
     assert blurt._normalize(layout_specific_event) == blurt.TILDE_KEY
 
 
+@pytest.mark.parametrize("event_type", [blurt.kCGEventKeyDown, blurt.kCGEventKeyUp])
+def test_intercept_suppresses_tilde_events(event_type, monkeypatch):
+    event = object()
+    monkeypatch.setattr(blurt, "SHORTCUT", blurt.SHORTCUTS["tilde"])
+    monkeypatch.setattr(blurt, "CGEventGetIntegerValueField", lambda received, field: blurt.TILDE_KEY_CODE)
+
+    assert blurt._intercept_keyboard_event(event_type, event) is None
+
+
+@pytest.mark.parametrize(
+    ("shortcut", "event_type", "key_code"),
+    [
+        ("right-cmd", blurt.kCGEventKeyDown, blurt.TILDE_KEY_CODE),
+        ("tilde", blurt.kCGEventKeyDown, 0),
+        ("tilde", 0, blurt.TILDE_KEY_CODE),
+    ],
+)
+def test_intercept_passes_through_other_events(shortcut, event_type, key_code, monkeypatch):
+    event = object()
+    monkeypatch.setattr(blurt, "SHORTCUT", blurt.SHORTCUTS[shortcut])
+    monkeypatch.setattr(blurt, "CGEventGetIntegerValueField", lambda received, field: key_code)
+
+    assert blurt._intercept_keyboard_event(event_type, event) is event
+
+
+def test_create_keyboard_listener_wires_interceptor(monkeypatch):
+    captured = {}
+    listener = object()
+
+    def fake_listener(**kwargs):
+        captured.update(kwargs)
+        return listener
+
+    monkeypatch.setattr(blurt.keyboard, "Listener", fake_listener)
+
+    assert blurt._create_keyboard_listener() is listener
+    assert captured == {
+        "on_press": blurt.on_press,
+        "on_release": blurt.on_release,
+        "darwin_intercept": blurt._intercept_keyboard_event,
+    }
+
+
 # --- Vocab ---
 
 
